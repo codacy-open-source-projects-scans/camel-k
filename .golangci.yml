@@ -1,0 +1,104 @@
+# ---------------------------------------------------------------------------
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ---------------------------------------------------------------------------
+
+linters-settings:
+  lll:
+    line-length: 170
+  mnd:
+    checks:
+      - argument
+      - case
+      - operation
+      - return
+      - assign
+    ignored-functions:
+      - '^len\.'
+      - '^strings\.SplitN$'
+      - '^matchOrEmpty$'
+      - '^make$'
+    ignored-files:
+      # ignore install files that are part of features being deprecated
+      # such ass install anc the kamel cli
+      #
+      # files are individually listed as if any new file is added or those not listed here are amended
+      # then best practices must be followed
+      - 'pkg/install/cluster.go'
+      - 'pkg/cmd/install.go'
+      - 'pkg/cmd/debug.go'
+      - 'pkg/cmd/describe.go'
+      - 'pkg/cmd/describe_integration.go'
+      - 'pkg/cmd/describe_kamelet.go'
+      - 'pkg/cmd/dump.go'
+      - 'pkg/cmd/get.go'
+      - 'pkg/cmd/install.go'
+      - 'pkg/cmd/log.go'
+      - 'pkg/cmd/kamelet_get.go'
+      - 'pkg/cmd/kit_get.go'
+      - 'pkg/cmd/uninstall.go'
+      - 'pkg/cmd/run_support.go'
+      # seems to be used only by the "kamel cli" command
+      - 'pkg/util/kubernetes/log/pod_scraper.go'
+      - 'pkg/util/indentedwriter/writer.go'
+run:
+  tests: false
+issues:
+  exclude-files:
+    - test_support.go
+linters:
+  enable-all: true
+  disable:
+    # this linter checks for unnecessary newlines at the start and end of functions, etc.,
+    # however sometimes spaces helps readability
+    - whitespace
+    # this linter checks the struct tags but does not handle struct embedding which causes
+    # a large number of false finding
+    - tagliatelle
+    # this linter reports long lines but since there is no standard way to split then,
+    # then we will disable it for now
+    - lll
+    # https://github.com/apache/camel-k/issues/5486
+    - cyclop
+    - depguard
+    - dupl
+    - exhaustive
+    - exhaustivestruct
+    - exhaustruct
+    - forbidigo
+    - funlen
+    - gci
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - gocyclo
+    - godox
+    - err113
+    - gofumpt
+    - gomnd
+    - ireturn
+    - nestif
+    - nilnil
+    - nlreturn
+    - paralleltest
+    - revive
+    - tagalign
+    - testpackage
+    - varnamelen
+    - wrapcheck
+    - wsl
+    # TODO: too much work at this stage as many files are impacted by the lint suggestions, however the reported
+    #       lint violation make a lot of sense so we should re-enable the lints below and work to fix the findings
+    - perfsprint

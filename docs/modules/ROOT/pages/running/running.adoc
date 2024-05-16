@@ -1,0 +1,120 @@
+[[running-integration]]
+= Running an Integration
+
+After completing the xref:installation/installation.adoc[installation] you should be connected to a Kubernetes/OpenShift cluster
+and have the `kamel` CLI correctly configured.
+
+Ensure you're connected to the cluster by executing a simple command using the Kubernetes CLI:
+
+[source]
+----
+kubectl get pod
+----
+
+Just replace `kubectl` with `oc` if you're using OpenShift. If everything is correctly configured you should get a response from the Kubernetes API
+server (you should see at least the `camel-k-operator` running).
+
+You are now ready to create your first integration using Camel K. Just create a new Yaml file with the following content:
+
+[source,yaml]
+.run-hello.yaml
+----
+- from:
+    uri: "timer:tick?period=3000"
+    steps:
+      - setBody:
+          constant: "Hello world from Camel K"
+      - to: "log:info"
+----
+
+You can run it on the cluster by executing:
+
+[source]
+----
+kamel run run-hello.yaml
+----
+
+Integrations can be written in any supported Camel DSL. We are collecting examples in our https://github.com/apache/camel-k/[Camel K GitHub repository].
+
+[[monitoring-integration]]
+== Monitoring the application status
+
+Camel K integrations follow a lifecycle composed of several steps before getting into the `Running` state.
+
+You can check the status of all integrations by executing the following command:
+
+```
+kamel get
+```
+
+[[logging-integration]]
+== Log the standard output
+
+Camel K integrations follow a lifecycle composed of several steps before getting into the `Running` state.
+
+You can check the status of all integrations by executing the following command:
+
+```
+kamel logs hello
+```
+
+[[dev-mode-integration]]
+== Running in dev mode
+
+Camel K provide a very nice **dev mode** feature that will allow you to apply any change to your Integration code reactively. Check out the xref:running/dev-mode.adoc[Camel K dev mode]
+
+[[running-model]]
+== Camel K development model
+
+The idea of Camel K is to simplify the deployment of your Integration to the cloud. For this reason, there are certain limitations you need to take into account, depending on the Camel DSL you're using. For instance, taking Java DSL as reference, you are generally requested to maintain your route development within a single class. As soon as your development gain complexity, the suggestion is to keep the business logic in an external dependency and use such dependency from your class containing the route definition. See more about xref:configuration/dependencies.adoc[how to use a dependency].
+
+[[running-integration-dsl]]
+== Running locally
+
+During development, for most of the cases, if you are not using Camel K traits or specific Camel Quarkus configuration, you can use Camel JBang to run the Integration. This is a quick way to start testing your Integration, adding only at a later stage of the developments any configuration related to the cluster where you're going to run the Integration. See link:/blog/2022/11/camel-k-jbang/[how to test Camel K with Camel JBang] blog.
+
+[[no-cli-integration]]
+== Running without CLI
+
+You can run your integration also if you have no CLI available. `kamel` CLI manages a lot of fancy features but you can create an xref:apis/camel-k.adoc#_camel_apache_org_v1_Integration[Integration Custom Resource] with all the configuration expected to run your application.
+
+As an example, let's get the result of a xref:running/dry-run.adoc[Dry Run] execution for a sample route:
+
+```
+kamel run Sample.java -o yaml
+```
+
+It will return the expected Integration custom resource (you can type it manually according to the specification linked above):
+
+```
+apiVersion: camel.apache.org/v1
+kind: Integration
+metadata:
+  creationTimestamp: null
+  name: my-integration
+  namespace: default
+spec:
+  sources:
+  - content: "
+    import org.apache.camel.builder.RouteBuilder;
+    public class Sample extends RouteBuilder {
+      @Override
+      public void configure()
+      throws Exception {
+        from(\"timer:tick\")
+        .log(\"Hello Integration!\");
+       }
+      }"
+    name: Sample.java
+status: {}
+```
+
+We can save this custom resource in a yaml file, ie, `my-integration.yaml`. Once done, we can run the integration storing the Integration custom resource, via `kubectl`, UI, API call or whichever mean we have to call our Kubernetes cluster. In our example, we'll do this through `kubectl` CLI:
+
+```
+kubectl apply -f my-integration.yaml
+...
+integration.camel.apache.org/my-integration created
+```
+
+The operator will now take care to run the Integration accordingly.
