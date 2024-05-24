@@ -18,11 +18,8 @@
 # ---------------------------------------------------------------------------
 
 - from:
-    uri: "timer:tick"
+    uri: "timer:build-property"
     steps:
-      - setHeader:
-          name: "m"
-          simple: "string!"
       - setBody:
-          simple: "Magic${header.m}"
-      - to: "log:info?showAll=false"
+          simple: "The application name: {{quarkus.application.name}}"
+      - to: "log:info"

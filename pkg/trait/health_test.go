@@ -119,19 +119,8 @@ func TestHealthTrait(t *testing.T) {
 	assert.Equal(t, "/q/health/started", d.Spec.Template.Spec.Containers[0].StartupProbe.HTTPGet.Path)
 }
 
-func TestConfigureHealthTraitDoesSucceed(t *testing.T) {
+func TestConfigureHealthTraitDefault(t *testing.T) {
 	ht, environment := createNominalHealthTrait(t)
-	configured, condition, err := ht.Configure(environment)
-
-	assert.True(t, configured)
-	assert.Nil(t, err)
-	assert.Nil(t, condition)
-}
-
-func TestConfigureHealthTraitDisabled(t *testing.T) {
-	enabled := false
-	ht, environment := createNominalHealthTrait(t)
-	ht.Enabled = &enabled
 	configured, condition, err := ht.Configure(environment)
 
 	assert.False(t, configured)
@@ -139,8 +128,21 @@ func TestConfigureHealthTraitDisabled(t *testing.T) {
 	assert.Nil(t, condition)
 }
 
-func TestApplyHealthTraitDefault(t *testing.T) {
+func TestConfigureHealthTraitEnabled(t *testing.T) {
+	enabled := true
 	ht, environment := createNominalHealthTrait(t)
+	ht.Enabled = &enabled
+	configured, condition, err := ht.Configure(environment)
+
+	assert.True(t, configured)
+	assert.Nil(t, err)
+	assert.Nil(t, condition)
+}
+
+func TestApplyHealthTraitDefault(t *testing.T) {
+	enabled := true
+	ht, environment := createNominalHealthTrait(t)
+	ht.Enabled = &enabled
 	configured, condition, err := ht.Configure(environment)
 	assert.True(t, configured)
 	assert.Nil(t, err)
@@ -155,6 +157,7 @@ func TestApplyHealthTraitDefault(t *testing.T) {
 func TestApplyHealthTraitLivenessDefault(t *testing.T) {
 	enabled := true
 	ht, environment := createNominalHealthTrait(t)
+	ht.Enabled = &enabled
 	ht.LivenessProbeEnabled = &enabled
 	configured, condition, err := ht.Configure(environment)
 	assert.True(t, configured)
@@ -171,6 +174,7 @@ func TestApplyHealthTraitLivenessDefault(t *testing.T) {
 func TestApplyHealthTraitStartupDefault(t *testing.T) {
 	enabled := true
 	ht, environment := createNominalHealthTrait(t)
+	ht.Enabled = &enabled
 	ht.StartupProbeEnabled = &enabled
 	configured, condition, err := ht.Configure(environment)
 	assert.True(t, configured)
@@ -223,4 +227,34 @@ func createNominalHealthTrait(t *testing.T) (*healthTrait, *Environment) {
 	environment.Resources.Add(&deployment)
 
 	return trait, environment
+}
+
+func TestApplyHealthTraitSyntheticKit(t *testing.T) {
+	enabled := true
+	ht, environment := createNominalHealthTrait(t)
+	// Simulate a synthetic Kit which has not catalog attached
+	environment.CamelCatalog = nil
+	ht.Enabled = &enabled
+	ht.LivenessProbeEnabled = &enabled
+	ht.ReadinessProbeEnabled = &enabled
+	ht.StartupProbeEnabled = &enabled
+	ht.LivenessProbe = "/my-live"
+	ht.ReadinessProbe = "/my-ready"
+	ht.StartupProbe = "/my-startup"
+	configured, condition, err := ht.Configure(environment)
+	assert.True(t, configured)
+	assert.Nil(t, err)
+	assert.Nil(t, condition)
+
+	err = ht.Apply(environment)
+	assert.Nil(t, err)
+	assert.Equal(t, "/my-live", environment.GetIntegrationContainer().LivenessProbe.HTTPGet.Path)
+	assert.Equal(t, corev1.URISchemeHTTP, environment.GetIntegrationContainer().StartupProbe.HTTPGet.Scheme)
+	assert.Equal(t, "8080", environment.GetIntegrationContainer().StartupProbe.HTTPGet.Port.String())
+	assert.Equal(t, "/my-ready", environment.GetIntegrationContainer().ReadinessProbe.HTTPGet.Path)
+	assert.Equal(t, corev1.URISchemeHTTP, environment.GetIntegrationContainer().StartupProbe.HTTPGet.Scheme)
+	assert.Equal(t, "8080", environment.GetIntegrationContainer().StartupProbe.HTTPGet.Port.String())
+	assert.Equal(t, "/my-startup", environment.GetIntegrationContainer().StartupProbe.HTTPGet.Path)
+	assert.Equal(t, corev1.URISchemeHTTP, environment.GetIntegrationContainer().StartupProbe.HTTPGet.Scheme)
+	assert.Equal(t, "8080", environment.GetIntegrationContainer().StartupProbe.HTTPGet.Port.String())
 }

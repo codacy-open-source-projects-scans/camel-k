@@ -18,11 +18,8 @@
 # ---------------------------------------------------------------------------
 
 - from:
-    uri: "timer:tick"
+    uri: "timer:configmap"
     steps:
-      - setHeader:
-          name: "m"
-          simple: "string!"
       - setBody:
-          simple: "Magic${header.m}"
-      - to: "log:info?showAll=false"
+          simple: "configmap content is: {{my.key.1}} {{my.key.2}}"
+      - to: "log:info"

@@ -18,11 +18,22 @@
 # ---------------------------------------------------------------------------
 
 - from:
-    uri: "timer:tick"
+    uri: "direct:listPets"
     steps:
-      - setHeader:
-          name: "m"
-          simple: "string!"
       - setBody:
-          simple: "Magic${header.m}"
-      - to: "log:info?showAll=false"
+          simple: "listPets"
+      - to: "log:info"
+
+- from:
+    uri: "direct:createPets"
+    steps:
+      - setBody:
+          simple: "createPets"
+      - to: "log:info"
+
+- from:
+    uri: "direct:showPetById"
+    steps:
+      - setBody:
+          simple: "showPetById"
+      - to: "log:info"

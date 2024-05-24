@@ -18,11 +18,8 @@
 # ---------------------------------------------------------------------------
 
 - from:
-    uri: "timer:tick"
+    uri: "timer:property"
     steps:
-      - setHeader:
-          name: "m"
-          simple: "string!"
       - setBody:
-          simple: "Magic${header.m}"
-      - to: "log:info?showAll=false"
+          simple: "property content is: {{my.message}}"
+      - to: "log:info"

@@ -18,11 +18,8 @@
 # ---------------------------------------------------------------------------
 
 - from:
-    uri: "timer:tick"
+    uri: "file:/tmp/app/?fileName=test.txt&noop=true&idempotent=false"
     steps:
-      - setHeader:
-          name: "m"
-          simple: "string!"
       - setBody:
-          simple: "Magic${header.m}"
-      - to: "log:info?showAll=false"
+          simple: "resource file content is: ${body}"
+      - to: "log:info"

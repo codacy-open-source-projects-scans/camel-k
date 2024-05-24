@@ -1,5 +1,3 @@
-# camel-k: language=yaml
-
 # ---------------------------------------------------------------------------
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
@@ -18,11 +16,6 @@
 # ---------------------------------------------------------------------------
 
 - from:
-    uri: "timer:tick"
+    uri: "kamelet:my-own-timer-source?message=Hello+world"
     steps:
-      - setHeader:
-          name: "m"
-          simple: "string!"
-      - setBody:
-          simple: "Magic${header.m}"
       - to: "log:info?showAll=false"
