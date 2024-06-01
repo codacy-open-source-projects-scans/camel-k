@@ -4,8 +4,25 @@
 
 [Full Changelog](https://github.com/apache/camel-k/compare/v2.3.2...HEAD)
 
+**Closed issues:**
+
+- Kamelet data type test failling with updated 4.4.1 kamelet [\#5553](https://github.com/apache/camel-k/issues/5553)
+- Promote Integration operator warning [\#5541](https://github.com/apache/camel-k/issues/5541)
+- Disable Jib telemetry/update check [\#5481](https://github.com/apache/camel-k/issues/5481)
+- JVM trait refactoring [\#5476](https://github.com/apache/camel-k/issues/5476)
+
 **Merged pull requests:**
 
+- fix\(cmd\): promote correct labels [\#5568](https://github.com/apache/camel-k/pull/5568) ([squakez](https://github.com/squakez))
+- chore\(builder\): Jib disableUpdateChecks = true [\#5566](https://github.com/apache/camel-k/pull/5566) ([squakez](https://github.com/squakez))
+- chore\(e2e\): revert a commented test [\#5564](https://github.com/apache/camel-k/pull/5564) ([squakez](https://github.com/squakez))
+- fix\(ctrl\): synthetic Integration cannot set blockOwnerDeletion [\#5561](https://github.com/apache/camel-k/pull/5561) ([squakez](https://github.com/squakez))
+- fix\(e2e\): Data type action kamelet transformer error [\#5557](https://github.com/apache/camel-k/pull/5557) ([gansheer](https://github.com/gansheer))
+- fix\(builder\): add root and base image to S2I report [\#5555](https://github.com/apache/camel-k/pull/5555) ([squakez](https://github.com/squakez))
+- fix\(trait\): jolokia link [\#5554](https://github.com/apache/camel-k/pull/5554) ([squakez](https://github.com/squakez))
+- chore\(ci\): Knative 1.14.0 [\#5551](https://github.com/apache/camel-k/pull/5551) ([squakez](https://github.com/squakez))
+- fix\(traits\): don't skip for synthetic kits [\#5548](https://github.com/apache/camel-k/pull/5548) ([squakez](https://github.com/squakez))
+- fix\(pipeline\) fix s2i image in publish task [\#5542](https://github.com/apache/camel-k/pull/5542) ([mmajerni](https://github.com/mmajerni))
 - Fix offline script to use maven settings and option to skip ssl verification [\#5538](https://github.com/apache/camel-k/pull/5538) ([claudio4j](https://github.com/claudio4j))
 - chore: Remove useless print [\#5536](https://github.com/apache/camel-k/pull/5536) ([gansheer](https://github.com/gansheer))
 - chore\(deps\): bump github.com/go-logr/logr from 1.4.1 to 1.4.2 [\#5532](https://github.com/apache/camel-k/pull/5532) ([dependabot[bot]](https://github.com/apps/dependabot))
@@ -17,6 +34,7 @@
 - fix\(trait\): environment variables [\#5515](https://github.com/apache/camel-k/pull/5515) ([squakez](https://github.com/squakez))
 - doc: upgrade deployment procedure [\#5514](https://github.com/apache/camel-k/pull/5514) ([squakez](https://github.com/squakez))
 - fix\(ci\): configurable timeouts [\#5512](https://github.com/apache/camel-k/pull/5512) ([squakez](https://github.com/squakez))
+- Re evaluate golanci-lint exclusions \(dupl, gofumpt, nestif\) [\#5507](https://github.com/apache/camel-k/pull/5507) ([lburgazzoli](https://github.com/lburgazzoli))
 - fix\(e2e\): Route trait schema valid in OCP [\#5506](https://github.com/apache/camel-k/pull/5506) ([gansheer](https://github.com/gansheer))
 - fix\(e2e\): Tekton test permission failure with olm install command [\#5505](https://github.com/apache/camel-k/pull/5505) ([gansheer](https://github.com/gansheer))
 - fix\(tests\): fixed flaky Readiness condition with never ready route test in e2e/common/traits/health\_test.go [\#5503](https://github.com/apache/camel-k/pull/5503) ([valdar](https://github.com/valdar))
@@ -27,6 +45,7 @@
 - chore\(tools\): update golangci-lint to v1.58.1 [\#5495](https://github.com/apache/camel-k/pull/5495) ([lburgazzoli](https://github.com/lburgazzoli))
 - fix\(tests\): Minor fix to incremental\_build\_test.go after fixing of copykits. [\#5494](https://github.com/apache/camel-k/pull/5494) ([valdar](https://github.com/valdar))
 - chore\(deps\): bump github.com/prometheus/client\_golang from 1.19.0 to 1.19.1 [\#5492](https://github.com/apache/camel-k/pull/5492) ([dependabot[bot]](https://github.com/apps/dependabot))
+- feat\(trait\): jvm refactoring [\#5488](https://github.com/apache/camel-k/pull/5488) ([squakez](https://github.com/squakez))
 - cleanup golagci-lint configuration [\#5482](https://github.com/apache/camel-k/pull/5482) ([lburgazzoli](https://github.com/lburgazzoli))
 - cleanup pkg/util packages [\#5480](https://github.com/apache/camel-k/pull/5480) ([lburgazzoli](https://github.com/lburgazzoli))
 - Review permission check [\#5479](https://github.com/apache/camel-k/pull/5479) ([lburgazzoli](https://github.com/lburgazzoli))
@@ -44,16 +63,18 @@
 - fix\(\#5292\): Simplify run cmd for archs other than amd64 [\#5403](https://github.com/apache/camel-k/pull/5403) ([tdiesler](https://github.com/tdiesler))
 - feat\(4893\) YAML DSL route configuration support [\#5369](https://github.com/apache/camel-k/pull/5369) ([realMartinez](https://github.com/realMartinez))
 
-## [v2.3.2](https://github.com/apache/camel-k/tree/v2.3.2) (2024-05-21)
+## [v2.3.2](https://github.com/apache/camel-k/tree/v2.3.2) (2024-05-28)
 
 [Full Changelog](https://github.com/apache/camel-k/compare/camel-k-crds-2.3.2...v2.3.2)
 
-## [camel-k-crds-2.3.2](https://github.com/apache/camel-k/tree/camel-k-crds-2.3.2) (2024-05-21)
+## [camel-k-crds-2.3.2](https://github.com/apache/camel-k/tree/camel-k-crds-2.3.2) (2024-05-28)
 
 [Full Changelog](https://github.com/apache/camel-k/compare/2.3.2-nightly...camel-k-crds-2.3.2)
 
 **Closed issues:**
 
+- Jolokia trait link missing [\#5540](https://github.com/apache/camel-k/issues/5540)
+- Incorrect status handling of beersource when it can not connect to its 3rd party web-service [\#5528](https://github.com/apache/camel-k/issues/5528)
 - Knative service not working when using sourceless Integration in v2.3.1 [\#5519](https://github.com/apache/camel-k/issues/5519)
 - Operator restart Integrations on upgrade [\#5491](https://github.com/apache/camel-k/issues/5491)
 - Remove maven threads configuration based on GOMAXPROCS [\#5467](https://github.com/apache/camel-k/issues/5467)

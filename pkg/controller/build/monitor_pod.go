@@ -68,6 +68,7 @@ func (action *monitorPodAction) Handle(ctx context.Context, build *v1.Build) (*v
 		return nil, err
 	}
 
+	//nolint:nestif
 	if pod == nil {
 		switch build.Status.Phase {
 
@@ -362,7 +363,7 @@ func publishTaskImageName(tasks []v1.Task) string {
 	case t.Jib != nil:
 		return t.Jib.Image
 	case t.S2i != nil:
-		return t.S2i.Name
+		return t.S2i.Image
 	}
 
 	return ""

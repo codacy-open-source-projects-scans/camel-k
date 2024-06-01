@@ -15,35 +15,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package builder
+package v1
 
 import (
-	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func artifactIDs(artifacts []v1.Artifact) []string {
-	result := make([]string, 0, len(artifacts))
-
-	for _, a := range artifacts {
-		result = append(result, a.ID)
+func TestGetKitDependenciesDirectories(t *testing.T) {
+	kit := &IntegrationKit{
+		Status: IntegrationKitStatus{
+			Artifacts: []Artifact{
+				{Target: "my-dir1/lib/mytest.jar"},
+				{Target: "my-dir1/lib/mytest2.jar"},
+				{Target: "my-dir1/lib/mytest3.jar"},
+				{Target: "my-dir2/lib/mytest4.jar"},
+				{Target: "my-dir1/lib2/mytest5.jar"},
+				{Target: "my-dir/mytest6.jar"},
+				{Target: "my-dir/mytest7.jar"},
+			},
+			Phase: IntegrationKitPhaseReady,
+		},
 	}
-
-	return result
-}
-
-// initializeStatusFrom helps creating a BuildStatus from scratch filling with base and root images.
-func initializeStatusFrom(buildStatus v1.BuildStatus, taskBaseImage string) *v1.BuildStatus {
-	status := v1.BuildStatus{}
-	baseImage := buildStatus.BaseImage
-	if baseImage == "" {
-		baseImage = taskBaseImage
-	}
-	status.BaseImage = baseImage
-	rootImage := buildStatus.RootImage
-	if rootImage == "" {
-		rootImage = taskBaseImage
-	}
-	status.RootImage = rootImage
-
-	return &status
+	paths := kit.Status.GetDependenciesPaths()
+	assert.Len(t, paths, 4)
+	assert.Equal(t, "my-dir/*", paths[0])
+	assert.Equal(t, "my-dir1/lib/*", paths[1])
+	assert.Equal(t, "my-dir1/lib2/*", paths[2])
+	assert.Equal(t, "my-dir2/lib/*", paths[3])
 }
