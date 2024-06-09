@@ -26,7 +26,7 @@ LOCALBIN := $(PROJECT_PATH)/bin
 VERSIONFILE := pkg/util/defaults/defaults.go
 VERSION ?= 2.4.0-SNAPSHOT
 LAST_RELEASED_IMAGE_NAME := camel-k-operator
-LAST_RELEASED_VERSION ?= 2.3.1
+LAST_RELEASED_VERSION ?= 2.3.2
 DEFAULT_RUNTIME_VERSION := 3.8.1
 CONTROLLER_GEN_VERSION := v0.6.1
 CODEGEN_VERSION := v0.27.4
@@ -272,35 +272,47 @@ endif
 #
 test-common: do-build
 	FAILED=0; STAGING_RUNTIME_REPO="$(STAGING_RUNTIME_REPO)"; \
-	go test -timeout 90m -v ./e2e/common/... -tags=integration -parallel=$(TEST_COMMON_PARALLEL_COUNT) $(TEST_INTEGRATION_COMMON_LANG_RUN) $(GOTESTFMT) || FAILED=1; \
+	go test -timeout 90m -v ./e2e/common/... -tags=integration -parallel=$(TEST_COMMON_PARALLEL_COUNT) $(TEST_INTEGRATION_COMMON_LANG_RUN) $(GOTESTFMT) || ((FAILED++)); \
 	exit $${FAILED}
 
 #
 # Smoke tests are a subset of common tests used to quickly verify the operator
 #
 test-smoke: do-build
+	TEST_SKIP_AFTER_FAILURE_COUNT="$(TEST_SKIP_AFTER_FAILURE_COUNT)"; \
+	if [[ $$TEST_SKIP_AFTER_FAILURE_COUNT = "" ]]; then \
+		TEST_SKIP_AFTER_FAILURE_COUNT=0; \
+	fi; \
 	FAILED=0; STAGING_RUNTIME_REPO="$(STAGING_RUNTIME_REPO)"; \
-	go test -timeout 10m -v ./e2e/common/main_test.go -tags=integration $(TEST_INTEGRATION_COMMON_LANG_RUN) $(GOTESTFMT) || FAILED=1; \
-	go test -timeout 30m -v ./e2e/common/languages -tags=integration -parallel=$(TEST_COMMON_PARALLEL_COUNT) $(TEST_INTEGRATION_COMMON_LANG_RUN) $(GOTESTFMT) || FAILED=1; \
-	go test -timeout 30m -v \
-		./e2e/common/misc/cron_test.go \
-		./e2e/common/misc/kamelet_test.go \
-		./e2e/common/misc/pipe_test.go \
-	 	-tags=integration -parallel=$(TEST_COMMON_PARALLEL_COUNT) $(TEST_INTEGRATION_COMMON_LANG_RUN) $(GOTESTFMT) || FAILED=1; \
-	go test -timeout 30m -v \
-		./e2e/common/traits/camel_test.go \
-		./e2e/common/traits/container_test.go \
-		./e2e/common/traits/openapi_test.go \
-		./e2e/common/traits/service_test.go \
-	 	-tags=integration -parallel=$(TEST_COMMON_PARALLEL_COUNT) $(TEST_INTEGRATION_COMMON_LANG_RUN) $(GOTESTFMT) || FAILED=1; \
-	exit $${FAILED}
+	echo "TEST_COMMON_PARALLEL_COUNT=$$TEST_COMMON_PARALLEL_COUNT"; \
+	echo "TEST_SKIP_AFTER_FAILURE_COUNT=$$TEST_SKIP_AFTER_FAILURE_COUNT"; \
+	go test -timeout 10m -count=1 -v ./e2e/common/main_test.go -tags=integration $(TEST_INTEGRATION_COMMON_LANG_RUN) $(GOTESTFMT) || ((FAILED++)); \
+	if [ $$FAILED -le $$TEST_SKIP_AFTER_FAILURE_COUNT ]; then \
+		go test -timeout 30m -count=1 -v ./e2e/common/languages -tags=integration -parallel=$(TEST_COMMON_PARALLEL_COUNT) $(TEST_INTEGRATION_COMMON_LANG_RUN) $(GOTESTFMT) || ((FAILED++)); \
+	fi; \
+	if [ $$FAILED -le $$TEST_SKIP_AFTER_FAILURE_COUNT ]; then \
+		go test -timeout 30m -count=1 -v \
+			./e2e/common/misc/cron_test.go \
+			./e2e/common/misc/kamelet_test.go \
+			./e2e/common/misc/pipe_test.go \
+			-tags=integration -parallel=$(TEST_COMMON_PARALLEL_COUNT) $(TEST_INTEGRATION_COMMON_LANG_RUN) $(GOTESTFMT) || ((FAILED++)); \
+	fi; \
+	if [ $$FAILED -le $$TEST_SKIP_AFTER_FAILURE_COUNT ]; then \
+		go test -timeout 30m -count=1 -v \
+			./e2e/common/traits/camel_test.go \
+			./e2e/common/traits/container_test.go \
+			./e2e/common/traits/openapi_test.go \
+			./e2e/common/traits/service_test.go \
+			-tags=integration -parallel=$(TEST_COMMON_PARALLEL_COUNT) $(TEST_INTEGRATION_COMMON_LANG_RUN) $(GOTESTFMT) || ((FAILED++)); \
+	fi; \
+	exit $$FAILED
 
 #
 # Common tests that require some particular operator setting or need to be installed in multiple namespaces
 #
 test-advanced: do-build
 	FAILED=0; STAGING_RUNTIME_REPO="$(STAGING_RUNTIME_REPO)"; \
-	go test -timeout 90m -v ./e2e/advanced -tags=integration -parallel=$(TEST_ADVANCED_PARALLEL_COUNT) $(TEST_INSTALL_RUN) $(GOTESTFMT) || FAILED=1; \
+	go test -timeout 90m -v ./e2e/advanced -tags=integration -parallel=$(TEST_ADVANCED_PARALLEL_COUNT) $(TEST_INSTALL_RUN) $(GOTESTFMT) || ((FAILED++)); \
 	exit $${FAILED}
 
 #
@@ -308,9 +320,9 @@ test-advanced: do-build
 #
 test-install: do-build
 	FAILED=0; STAGING_RUNTIME_REPO="$(STAGING_RUNTIME_REPO)"; \
-	go test -timeout 40m -v ./e2e/install/cli -tags=integration $(TEST_INSTALL_RUN) $(GOTESTFMT) || FAILED=1; \
-	go test -timeout 40m -v ./e2e/install/kustomize -tags=integration $(TEST_INSTALL_RUN) $(GOTESTFMT) || FAILED=1; \
-	go test -timeout 40m -v ./e2e/install/helm -tags=integration $(TEST_INSTALL_RUN) $(GOTESTFMT) || FAILED=1; \
+	go test -timeout 40m -v ./e2e/install/cli -tags=integration $(TEST_INSTALL_RUN) $(GOTESTFMT) || ((FAILED++)); \
+	go test -timeout 40m -v ./e2e/install/kustomize -tags=integration $(TEST_INSTALL_RUN) $(GOTESTFMT) || ((FAILED++)); \
+	go test -timeout 40m -v ./e2e/install/helm -tags=integration $(TEST_INSTALL_RUN) $(GOTESTFMT) || ((FAILED++)); \
 	exit $${FAILED}
 
 #
@@ -332,7 +344,7 @@ test-install-upgrade: do-build
 #
 test-knative: do-build
 	STAGING_RUNTIME_REPO="$(STAGING_RUNTIME_REPO)"; \
-	go test -timeout 60m -v ./e2e/knative -tags=integration $(TEST_KNATIVE_RUN) $(GOTESTFMT) || FAILED=1; \
+	go test -timeout 60m -v ./e2e/knative -tags=integration $(TEST_KNATIVE_RUN) $(GOTESTFMT) || ((FAILED++)); \
 	exit $${FAILED}
 
 #
@@ -343,25 +355,18 @@ test-builder: do-build
 	go test -timeout 30m -v ./e2e/builder -tags=integration $(TEST_BUILDER_RUN) $(GOTESTFMT)
 
 #
-# Telemetry tests that require the configuration of telemtry endpoints
+# Telemetry tests that require the configuration of telemetry endpoints
 #
 test-telemetry: do-build
 	STAGING_RUNTIME_REPO="$(STAGING_RUNTIME_REPO)" \
 	go test -timeout 30m -v ./e2e/telemetry -tags=integration $(TEST_TELEMETRY_RUN) $(GOTESTFMT)
 
 #
-# Quarkus native test which require a lower memory resources
+# Quarkus native test (requires certain CPU and memory conditions)
 #
 test-quarkus-native: do-build
 	STAGING_RUNTIME_REPO="$(STAGING_RUNTIME_REPO)" \
 	go test -timeout 180m -v ./e2e/native -tags=integration $(TEST_QUARKUS_RUN) $(GOTESTFMT)
-
-#
-# Quarkus native test which require a higher memory resources
-#
-test-quarkus-native-high-memory: do-build
-	STAGING_RUNTIME_REPO="$(STAGING_RUNTIME_REPO)" \
-	go test -timeout 180m -v ./e2e/native -tags=integration,high_memory $(TEST_QUARKUS_RUN) $(GOTESTFMT)
 
 build-kamel:
 	@echo "####### Building kamel CLI for linux/$(IMAGE_ARCH) architecture..."
@@ -713,7 +718,7 @@ bundle: set-version kustomize operator-sdk pre-bundle $(BUNDLE_CAMEL_APIS)
 # Rename the CSV name to conform with the existing released operator versions
 # This cannot happen in pre-bundle as the operator-sdk generation expects a CSV name the same as PACKAGE
 	@sed -i "s/^  name: $(CSV_NAME)/  name: $(CSV_PRODUCTION_NAME)/" $(CSV_PRODUCTION_PATH)
-	@echo "  com.redhat.openshift.versions : $(BUNDLE_METADATA_OPENSHIFT_VERSION)" >> ./bundle/metadata/annotations.yaml
+	@echo "  com.redhat.openshift.versions: $(BUNDLE_METADATA_OPENSHIFT_VERSION)" >> ./bundle/metadata/annotations.yaml
 	$(OPERATOR_SDK) bundle validate ./bundle
 
 # Build the bundle image.
