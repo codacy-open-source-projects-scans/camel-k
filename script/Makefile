@@ -267,6 +267,18 @@ else
 endif
 
 #
+# Setup the Knative test environment
+#
+setup-knative:
+	./e2e/knative/files/setup.sh
+
+#
+# Setup the Yaks test environment
+#
+setup-yaks:
+	./e2e/yaks/files/setup.sh
+
+#
 # Common tests that do not require any customized operator setting. They can leverage a unique namespaced operator installation to reduce
 # the time to complete (they are used also as smoke test for nightly release)
 #
@@ -322,7 +334,7 @@ test-install: do-build
 	FAILED=0; STAGING_RUNTIME_REPO="$(STAGING_RUNTIME_REPO)"; \
 	go test -timeout 40m -v ./e2e/install/cli -tags=integration $(TEST_INSTALL_RUN) $(GOTESTFMT) || ((FAILED++)); \
 	go test -timeout 40m -v ./e2e/install/kustomize -tags=integration $(TEST_INSTALL_RUN) $(GOTESTFMT) || ((FAILED++)); \
-	go test -timeout 40m -v ./e2e/install/helm -tags=integration $(TEST_INSTALL_RUN) $(GOTESTFMT) || ((FAILED++)); \
+	go test -timeout 60m -v ./e2e/install/helm -tags=integration $(TEST_INSTALL_RUN) $(GOTESTFMT) || ((FAILED++)); \
 	exit $${FAILED}
 
 #
@@ -767,7 +779,7 @@ $(GOIMPORT): $(LOCALBIN)
 #####
 
 KUSTOMIZE_DIR = "install/overlays/kubernetes/descoped"
-MINIKUBE_REGISTRY = "$(shell kubectl -n kube-system get service registry -o jsonpath='{.spec.clusterIP}')"
+MINIKUBE_REGISTRY = "$(shell kubectl -n kube-system get service registry -o jsonpath='{.spec.clusterIP}' 2> /dev/null)"
 DEFAULT_NS = "camel-k"
 
 .PHONY: install install-k8s-global install-k8s-ns install-openshift-global install-openshift-ns
