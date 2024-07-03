@@ -15,25 +15,6 @@
 # limitations under the License.
 # ---------------------------------------------------------------------------
 
-apiVersion: camel.apache.org/v1
-kind: Pipe
-metadata:
-  name: source-filter-pipe
-spec:
-  source:
-    ref:
-      kind: Broker
-      apiVersion: eventing.knative.dev/v1
-      name: default
-    properties:
-      source: org.apache.camel
-  sink:
-    ref:
-      kind: Kamelet
-      apiVersion: camel.apache.org/v1
-      name: log-sink
-    properties:
-      multiline: true
-      showHeaders: true
-      showBodyType: false
-      showExchangePattern: false
+- op: add
+  path: /spec/template/spec/containers/0/env/2/value
+  value: camel-k

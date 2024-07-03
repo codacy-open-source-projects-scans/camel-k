@@ -15,14 +15,6 @@
 # limitations under the License.
 # ---------------------------------------------------------------------------
 
-config:
-  namespace:
-    temporary: true
-pre:
-- name: installation
-  run: |
-    kamel run logger.yaml -w -n $YAKS_NAMESPACE
-post:
-  - name: print dump
-    if: env:CI=true && failure()
-    run: yaks dump --includes app=camel-k
+- op: add
+  path: /spec/template/spec/containers/0/env/2/value
+  value: camel-k

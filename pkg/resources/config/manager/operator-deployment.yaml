@@ -72,15 +72,19 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            # Change to true to be able to create synthetic Integrations
-            - name: CAMEL_K_SYNTHETIC_INTEGRATIONS
-              value: "false"
           livenessProbe:
             httpGet:
               path: /healthz
               port: 8081
             initialDelaySeconds: 20
             periodSeconds: 10
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "500m"
+            limits:
+              memory: "8Gi"
+              cpu: "2"
           securityContext:
             runAsNonRoot: true
             seccompProfile:
@@ -89,4 +93,3 @@ spec:
             capabilities:
               drop:
               - ALL
-

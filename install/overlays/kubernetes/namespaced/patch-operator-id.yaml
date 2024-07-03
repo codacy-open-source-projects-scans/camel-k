@@ -15,18 +15,6 @@
 # limitations under the License.
 # ---------------------------------------------------------------------------
 
-apiVersion: camel.apache.org/v1
-kind: Pipe
-metadata:
-  name: logger-sink-pipe
-spec:
-  source:
-    ref:
-      kind: InMemoryChannel
-      apiVersion: messaging.knative.dev/v1
-      name: messages
-  sink:
-    ref:
-      kind: Kamelet
-      apiVersion: camel.apache.org/v1
-      name: logger-sink
+- op: add
+  path: /spec/template/spec/containers/0/env/2/value
+  value: camel-k

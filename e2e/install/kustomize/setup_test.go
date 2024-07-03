@@ -40,14 +40,8 @@ import (
 )
 
 func TestKustomizeNamespaced(t *testing.T) {
-	// TODO, likely we need to adjust this test with a Kustomize overlay for Openshift
-	// which would not require the registry setting
 	KAMEL_INSTALL_REGISTRY := os.Getenv("KAMEL_INSTALL_REGISTRY")
 	kustomizeDir := testutil.MakeTempCopyDir(t, "../../../install")
-	ctx := TestContext()
-	// Ensure no CRDs are already installed
-	Cleanup(t, ctx)
-
 	WithNewTestNamespace(t, func(ctx context.Context, g *WithT, ns string) {
 		g.Expect(KAMEL_INSTALL_REGISTRY).NotTo(Equal(""))
 		// We must change a few values in the Kustomize config
@@ -108,28 +102,16 @@ func TestKustomizeNamespaced(t *testing.T) {
 		g.Eventually(IntegrationLogs(t, ctx, ns, "yaml"), TestTimeoutShort).Should(ContainSubstring("Magicstring!"))
 
 		// Test operator only uninstall
-		ExpectExecSucceed(t, g, Kubectl(
-			"delete",
-			"deploy,configmap,secret,sa,rolebindings,clusterrolebindings,roles,clusterroles,integrationplatform",
-			"-l",
-			"app=camel-k",
-			"-n",
-			ns,
-		))
+		UninstallOperator(t, ctx, g, ns, "../../../")
+
 		g.Eventually(OperatorPod(t, ctx, ns)).Should(BeNil())
 		g.Eventually(Platform(t, ctx, ns)).Should(BeNil())
 		g.Eventually(Integration(t, ctx, ns, "yaml"), TestTimeoutShort).ShouldNot(BeNil())
 		g.Eventually(IntegrationConditionStatus(t, ctx, ns, "yaml", v1.IntegrationConditionReady), TestTimeoutShort).Should(Equal(corev1.ConditionTrue))
 
 		// Test CRD uninstall (will remove Integrations as well)
-		ExpectExecSucceed(t, g, Kubectl(
-			"delete",
-			"crd",
-			"-l",
-			"app=camel-k",
-			"-n",
-			ns,
-		))
+		UninstallCRDs(t, ctx, g, "../../../")
+
 		g.Eventually(OperatorPod(t, ctx, ns)).Should(BeNil())
 		g.Eventually(Integration(t, ctx, ns, "yaml"), TestTimeoutShort).Should(BeNil())
 		g.Eventually(CRDs(t)).Should(BeNil())
@@ -137,14 +119,8 @@ func TestKustomizeNamespaced(t *testing.T) {
 }
 
 func TestKustomizeDescoped(t *testing.T) {
-	// TODO, likely we need to adjust this test with a Kustomize overlay for Openshift
-	// which would not require the registry setting
 	KAMEL_INSTALL_REGISTRY := os.Getenv("KAMEL_INSTALL_REGISTRY")
 	kustomizeDir := testutil.MakeTempCopyDir(t, "../../../install")
-	ctx := TestContext()
-	// Ensure no CRDs are already installed
-	Cleanup(t, ctx)
-
 	WithNewTestNamespace(t, func(ctx context.Context, g *WithT, ns string) {
 		g.Expect(KAMEL_INSTALL_REGISTRY).NotTo(Equal(""))
 		// We must change a few values in the Kustomize config
@@ -224,28 +200,16 @@ func TestKustomizeDescoped(t *testing.T) {
 			g.Eventually(IntegrationLogs(t, ctx, nsIntegration, "yaml"), TestTimeoutShort).Should(ContainSubstring("Magicstring!"))
 
 			// Test operator only uninstall
-			ExpectExecSucceed(t, g, Kubectl(
-				"delete",
-				"deploy,configmap,secret,sa,rolebindings,clusterrolebindings,roles,clusterroles,integrationplatform",
-				"-l",
-				"app=camel-k",
-				"-n",
-				ns,
-			))
+			UninstallOperator(t, ctx, g, ns, "../../../")
+
 			g.Eventually(OperatorPod(t, ctx, ns)).Should(BeNil())
 			g.Eventually(Platform(t, ctx, ns)).Should(BeNil())
 			g.Eventually(Integration(t, ctx, nsIntegration, "yaml"), TestTimeoutShort).ShouldNot(BeNil())
 			g.Eventually(IntegrationConditionStatus(t, ctx, nsIntegration, "yaml", v1.IntegrationConditionReady), TestTimeoutShort).Should(Equal(corev1.ConditionTrue))
 
 			// Test CRD uninstall (will remove Integrations as well)
-			ExpectExecSucceed(t, g, Kubectl(
-				"delete",
-				"crd",
-				"-l",
-				"app=camel-k",
-				"-n",
-				ns,
-			))
+			UninstallCRDs(t, ctx, g, "../../../")
+
 			g.Eventually(OperatorPod(t, ctx, ns)).Should(BeNil())
 			g.Eventually(Integration(t, ctx, nsIntegration, "yaml"), TestTimeoutShort).Should(BeNil())
 			g.Eventually(CRDs(t)).Should(BeNil())

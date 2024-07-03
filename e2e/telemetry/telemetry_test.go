@@ -30,22 +30,17 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	. "github.com/apache/camel-k/v2/e2e/support"
 )
 
 func TestTelemetryTrait(t *testing.T) {
 	WithNewTestNamespace(t, func(ctx context.Context, g *WithT, ns string) {
-		operatorID := "camel-k-trait-telemetry"
-		g.Expect(KamelInstallWithID(t, ctx, operatorID, ns)).To(Succeed())
-
 		// Check service is available
 		g.Eventually(ServicesByType(t, ctx, "otlp", corev1.ServiceTypeClusterIP), TestTimeoutLong).ShouldNot(BeEmpty())
 
 		// Create integration and activate traces by telemetry trait
-
-		g.Expect(KamelRunWithID(t, ctx, operatorID, ns,
+		g.Expect(KamelRun(t, ctx, ns,
 			"files/rest-consumer.yaml", "--name", "rest-consumer",
 			"-t", "telemetry.enabled=true",
 			"-t", "telemetry.endpoint=http://opentelemetrycollector.otlp:4317").Execute()).To(Succeed())
@@ -53,7 +48,7 @@ func TestTelemetryTrait(t *testing.T) {
 
 		name := "Bob"
 		serviceName := fmt.Sprintf("rest-consumer.%s", ns)
-		g.Expect(KamelRunWithID(t, ctx, operatorID, ns, "files/rest-producer.yaml",
+		g.Expect(KamelRun(t, ctx, ns, "files/rest-producer.yaml",
 			"-p", fmt.Sprintf("serviceName=%s", serviceName),
 			"-p", "name="+name,
 			"--name", "rest-producer").Execute()).To(Succeed())
@@ -69,17 +64,5 @@ func TestTelemetryTrait(t *testing.T) {
 		// Ensured logs in opentelemetry collector pod are present
 		g.Eventually(TailedLogs(t, ctx, pod.Namespace, pod.Name, 100), TestTimeoutLong).Should(ContainSubstring(fmt.Sprintf("http.target: Str(/customers/%s)", name)))
 		g.Eventually(TailedLogs(t, ctx, pod.Namespace, pod.Name, 100), TestTimeoutLong).Should(ContainSubstring(fmt.Sprintf("http.url: Str(http://%s/customers/%s)", serviceName, name)))
-
-		// check integration schema does not contains unwanted default trait value.
-		g.Eventually(UnstructuredIntegration(t, ctx, ns, "rest-consumer")).ShouldNot(BeNil())
-		unstructuredIntegration := UnstructuredIntegration(t, ctx, ns, "rest-consumer")()
-		builderTrait, _, _ := unstructured.NestedMap(unstructuredIntegration.Object, "spec", "traits", "addons", "telemetry")
-		g.Expect(builderTrait).NotTo(BeNil())
-		g.Expect(len(builderTrait)).To(Equal(2))
-		g.Expect(builderTrait["enabled"]).To(Equal(true))
-		g.Expect(builderTrait["endpoint"]).To(Equal("http://opentelemetrycollector.otlp:4317"))
-
-		// Clean up
-		g.Expect(Kamel(t, ctx, "delete", "--all", "-n", ns).Execute()).To(Succeed())
 	})
 }
