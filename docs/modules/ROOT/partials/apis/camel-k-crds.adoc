@@ -6906,8 +6906,9 @@ Propagates the `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` environment variables 
 
 
 A list of environment variables to be added to the integration container.
-The syntax is KEY=VALUE, e.g., `MY_VAR="my value"`.
-These take precedence over the previously defined environment variables.
+The syntax is either VAR=VALUE or VAR=[configmap{vbar}secret]:name/key, where name represents the resource name,
+and key represents the resource key to be mapped as and environment variable.
+These take precedence over any previously defined environment variables.
 
 
 |===
@@ -7920,10 +7921,7 @@ bool
 |
 
 
-Deprecated: include your properties in an explicit property file backed by a secret.
-Let the operator to scan for secret labeled with `camel.apache.org/kamelet` and `camel.apache.org/kamelet.configuration`.
-These secrets are mounted to the application and treated as plain properties file with their key/value list
-(ie .spec.data["camel.my-property"] = my-value) (default `true`).
+Deprecated: no longer available since version 2.5.
 
 
 |===
