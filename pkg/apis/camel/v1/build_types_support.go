@@ -282,9 +282,17 @@ func (bl BuildList) HasMatchingBuild(build *Build) (bool, *Build) {
 	if len(required) == 0 {
 		return false, nil
 	}
+	requiredMap := make(map[string]int, len(required))
+	for i, item := range required {
+		requiredMap[item] = i
+	}
 	runtimeVersion := build.RuntimeVersion()
 
-	for _, b := range bl.Items {
+	var bestBuild Build
+	bestBuildCommonDependencies := 0
+buildLoop:
+	for i := range bl.Items {
+		b := bl.Items[i]
 		if b.Name == build.Name || b.Status.IsFinished() {
 			continue
 		}
@@ -300,19 +308,26 @@ func (bl BuildList) HasMatchingBuild(build *Build) (bool, *Build) {
 			dependencyMap[item] = i
 		}
 
-		allMatching := true
+		// check if this build has any extra dependency. If it does, we can't use it
+		for _, item := range dependencies {
+			if _, ok := requiredMap[item]; !ok {
+				continue buildLoop
+			}
+		}
+
+		// now check how many common dependencies this build has
 		missing := 0
 		commonDependencies := 0
 		for _, item := range required {
 			if _, ok := dependencyMap[item]; !ok {
-				allMatching = false
 				missing++
 			} else {
 				commonDependencies++
 			}
 		}
 
-		if commonDependencies < len(required)/2 {
+		if commonDependencies == 0 {
+			// no common dependencies
 			continue
 		}
 
@@ -322,24 +337,24 @@ func (bl BuildList) HasMatchingBuild(build *Build) (bool, *Build) {
 			return true, &b
 		case BuildPhaseInitialization, BuildPhaseScheduling:
 			// handle suitable scheduled build
-			if allMatching && len(required) == len(dependencies) {
+
+			if missing == 0 {
 				// seems like both builds require exactly the same list of dependencies
 				// additionally check for the creation timestamp
 				if compareBuilds(&b, build) < 0 {
 					return true, &b
 				}
-			} else if !allMatching && commonDependencies > 0 {
-				// there are common dependencies. let's compare the total number of dependencies
-				// in each build. whichever build has less dependencies should run first
-				if len(dependencies) < len(required) ||
-					len(dependencies) == len(required) && compareBuilds(&b, build) < 0 {
-					return true, &b
-				}
+			} else if commonDependencies > bestBuildCommonDependencies {
+				bestBuildCommonDependencies = commonDependencies
+				bestBuild = b
 				continue
 			}
 		}
 	}
 
+	if bestBuildCommonDependencies > 0 {
+		return true, &bestBuild
+	}
 	return false, nil
 }
 
