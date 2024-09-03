@@ -77,39 +77,60 @@ func (t *camelTrait) Configure(e *Environment) (bool, *TraitCondition, error) {
 		}
 	}
 
-	return true, nil, nil
+	var cond *TraitCondition
+	//nolint: staticcheck
+	if (e.Integration != nil && !e.Integration.IsManagedBuild()) || (e.IntegrationKit != nil && e.IntegrationKit.IsSynthetic()) {
+		// We set a condition to warn the user the catalog used to run the Integration
+		// may differ from the runtime version which we don't control
+		cond = NewIntegrationCondition(
+			"Camel",
+			v1.IntegrationConditionTraitInfo,
+			corev1.ConditionTrue,
+			traitConfigurationReason,
+			fmt.Sprintf(
+				"Operated with CamelCatalog version %s which may be different from the runtime used in the container",
+				t.RuntimeVersion,
+			),
+		)
+	}
+
+	return true, cond, nil
 }
 
-//nolint:nestif
 func (t *camelTrait) Apply(e *Environment) error {
-	if e.IntegrationKit != nil && e.IntegrationKit.IsSynthetic() {
-		// Synthetic Integration Kit
-
-		// This is required as during init phase, the trait set by default these values
-		// which are widely used in the platform for different purposese.
-		if e.Integration != nil {
-			e.Integration.Status.RuntimeVersion = ""
-			e.Integration.Status.RuntimeProvider = ""
-		}
-	} else {
-		// Managed Integration
-		if e.CamelCatalog == nil {
-			if err := t.loadOrCreateCatalog(e, t.RuntimeVersion); err != nil {
-				return err
-			}
-		}
-		e.RuntimeVersion = e.CamelCatalog.Runtime.Version
-		if e.Integration != nil {
-			e.Integration.Status.RuntimeVersion = e.CamelCatalog.Runtime.Version
-			e.Integration.Status.RuntimeProvider = e.CamelCatalog.Runtime.Provider
-		}
-		if e.IntegrationKit != nil {
-			e.IntegrationKit.Status.RuntimeVersion = e.CamelCatalog.Runtime.Version
-			e.IntegrationKit.Status.RuntimeProvider = e.CamelCatalog.Runtime.Provider
+	// This is an important action to do as most of the traits
+	// expects a CamelCatalog to be loaded regardless it's a managed or
+	// non managed build Integration
+	if e.CamelCatalog == nil {
+		if err := t.loadOrCreateCatalog(e, t.RuntimeVersion); err != nil {
+			return err
 		}
 	}
 
-	if e.IntegrationKitInPhase(v1.IntegrationKitPhaseReady) && e.IntegrationInRunningPhases() {
+	if e.Integration != nil {
+		if e.Integration.IsManagedBuild() {
+			// If it's not managed we don't know which is the runtime running
+			e.Integration.Status.RuntimeVersion = e.CamelCatalog.Runtime.Version
+			e.Integration.Status.RuntimeProvider = e.CamelCatalog.Runtime.Provider
+		}
+		e.Integration.Status.Catalog = &v1.Catalog{
+			Version:  e.CamelCatalog.Runtime.Version,
+			Provider: e.CamelCatalog.Runtime.Provider,
+		}
+	}
+	if e.IntegrationKit != nil {
+		//nolint: staticcheck
+		if !e.IntegrationKit.IsSynthetic() {
+			e.IntegrationKit.Status.RuntimeVersion = e.CamelCatalog.Runtime.Version
+			e.IntegrationKit.Status.RuntimeProvider = e.CamelCatalog.Runtime.Provider
+		}
+		e.IntegrationKit.Status.Catalog = &v1.Catalog{
+			Version:  e.CamelCatalog.Runtime.Version,
+			Provider: e.CamelCatalog.Runtime.Provider,
+		}
+	}
+
+	if e.IntegrationInRunningPhases() {
 		// Get all resources
 		maps := t.computeConfigMaps(e)
 		e.Resources.AddAll(maps)

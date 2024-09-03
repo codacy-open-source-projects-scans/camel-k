@@ -32,8 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 
-	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
-
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
@@ -315,20 +313,8 @@ func TestContainerWithCustomImage(t *testing.T) {
 	assert.NotEmpty(t, environment.ExecutedTraits)
 	assert.NotNil(t, environment.GetTrait("deployer"))
 	assert.NotNil(t, environment.GetTrait("container"))
-	assert.Equal(t, "kit-"+ServiceTestName, environment.Integration.Status.IntegrationKit.Name)
-
-	ikt := v1.IntegrationKit{}
-	key := ctrl.ObjectKey{
-		Namespace: "ns",
-		Name:      "kit-" + ServiceTestName,
-	}
-
-	err = client.Get(context.TODO(), key, &ikt)
-	require.NoError(t, err)
-	assert.Equal(t, environment.Integration.ObjectMeta.UID, ikt.ObjectMeta.OwnerReferences[0].UID)
-
-	trait := environment.Integration.Spec.Traits.Container
-	assert.Equal(t, trait.Image, ikt.Spec.Image)
+	assert.Nil(t, environment.Integration.Status.IntegrationKit)
+	assert.Equal(t, environment.Integration.Spec.Traits.Container.Image, environment.Integration.Status.Image)
 }
 
 func TestContainerWithCustomImageAndIntegrationKit(t *testing.T) {
@@ -386,7 +372,7 @@ func TestContainerWithCustomImageAndIntegrationKit(t *testing.T) {
 
 	conditions, err := traitCatalog.apply(&environment)
 	require.Error(t, err)
-	assert.Empty(t, conditions)
+	assert.NotEmpty(t, conditions)
 	assert.Contains(t, err.Error(), "unsupported configuration: a container image has been set in conjunction with an IntegrationKit")
 }
 
@@ -398,10 +384,11 @@ func TestContainerWithImagePullPolicy(t *testing.T) {
 	traitCatalog := NewCatalog(nil)
 
 	environment := Environment{
-		Ctx:          context.TODO(),
-		Client:       client,
-		CamelCatalog: catalog,
-		Catalog:      traitCatalog,
+		Ctx:            context.TODO(),
+		Client:         client,
+		CamelCatalog:   catalog,
+		Catalog:        traitCatalog,
+		IntegrationKit: &v1.IntegrationKit{},
 		Integration: &v1.Integration{
 			Spec: v1.IntegrationSpec{
 				Profile: v1.TraitProfileKubernetes,
@@ -437,98 +424,6 @@ func TestContainerWithImagePullPolicy(t *testing.T) {
 	assert.Equal(t, corev1.PullAlways, container.ImagePullPolicy)
 }
 
-func TestRunKnativeEndpointWithKnativeNotInstalled(t *testing.T) {
-	environment := createEnvironment()
-	trait, _ := newContainerTrait().(*containerTrait)
-	environment.Integration.Spec.Sources = []v1.SourceSpec{
-		{
-			DataSpec: v1.DataSpec{
-				Name: "test.java",
-				Content: `
-				from("knative:channel/test").to("log:${body};
-			`,
-			},
-			Language: v1.LanguageJavaSource,
-		},
-	}
-	expectedCondition := NewIntegrationCondition(
-		"Container",
-		v1.IntegrationConditionKnativeAvailable,
-		corev1.ConditionFalse,
-		v1.IntegrationConditionKnativeNotInstalledReason,
-		"integration cannot run, as knative is not installed in the cluster",
-	)
-	configured, condition, err := trait.Configure(environment)
-	require.Error(t, err)
-	assert.Equal(t, expectedCondition, condition)
-	assert.False(t, configured)
-}
-
-func TestRunNonKnativeEndpointWithKnativeNotInstalled(t *testing.T) {
-	environment := createEnvironment()
-	trait, _ := newContainerTrait().(*containerTrait)
-	environment.Integration.Spec.Sources = []v1.SourceSpec{
-		{
-			DataSpec: v1.DataSpec{
-				Name: "test.java",
-				Content: `
-				from("platform-http://my-site").to("log:${body}");
-			`,
-			},
-			Language: v1.LanguageJavaSource,
-		},
-	}
-
-	configured, condition, err := trait.Configure(environment)
-	require.NoError(t, err)
-	assert.Nil(t, condition)
-	assert.True(t, configured)
-	conditions := environment.Integration.Status.Conditions
-	assert.Empty(t, conditions)
-}
-
-func createEnvironment() *Environment {
-	client, _ := test.NewFakeClient()
-	// disable the knative eventing api
-	fakeClient := client.(*test.FakeClient) //nolint
-	fakeClient.DisableAPIGroupDiscovery("eventing.knative.dev/v1")
-
-	replicas := int32(3)
-	catalog, _ := camel.QuarkusCatalog()
-
-	environment := &Environment{
-		CamelCatalog: catalog,
-		Catalog:      NewCatalog(nil),
-		Client:       client,
-		Integration: &v1.Integration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "integration-name",
-			},
-			Spec: v1.IntegrationSpec{
-				Replicas: &replicas,
-				Traits:   v1.Traits{},
-			},
-			Status: v1.IntegrationStatus{
-				Phase: v1.IntegrationPhaseInitialization,
-			},
-		},
-		Platform: &v1.IntegrationPlatform{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: "namespace",
-			},
-			Spec: v1.IntegrationPlatformSpec{
-				Cluster: v1.IntegrationPlatformClusterKubernetes,
-				Profile: v1.TraitProfileKubernetes,
-			},
-		},
-		Resources:             kubernetes.NewCollection(),
-		ApplicationProperties: make(map[string]string),
-	}
-	environment.Platform.ResyncStatusFullConfig()
-
-	return environment
-}
-
 func TestDeploymentContainerPorts(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
@@ -537,10 +432,11 @@ func TestDeploymentContainerPorts(t *testing.T) {
 	traitCatalog := NewCatalog(nil)
 
 	environment := Environment{
-		Ctx:          context.TODO(),
-		Client:       client,
-		CamelCatalog: catalog,
-		Catalog:      traitCatalog,
+		Ctx:            context.TODO(),
+		Client:         client,
+		CamelCatalog:   catalog,
+		Catalog:        traitCatalog,
+		IntegrationKit: &v1.IntegrationKit{},
 		Integration: &v1.Integration{
 			Spec: v1.IntegrationSpec{
 				Profile: v1.TraitProfileKubernetes,
@@ -602,10 +498,11 @@ func TestKnativeServiceContainerPorts(t *testing.T) {
 	traitCatalog := NewCatalog(nil)
 
 	environment := Environment{
-		Ctx:          context.TODO(),
-		Client:       client,
-		CamelCatalog: catalog,
-		Catalog:      traitCatalog,
+		Ctx:            context.TODO(),
+		Client:         client,
+		CamelCatalog:   catalog,
+		Catalog:        traitCatalog,
+		IntegrationKit: &v1.IntegrationKit{},
 		Integration: &v1.Integration{
 			Spec: v1.IntegrationSpec{
 				Profile: v1.TraitProfileKnative,
@@ -683,6 +580,11 @@ func TestDefaultKubernetesSecurityContext(t *testing.T) {
 
 func TestDefaultKnativeSecurityContext(t *testing.T) {
 	environment := createSettingContextEnvironment(t, v1.TraitProfileKnative)
+	environment.Integration.Spec.Traits.KnativeService = &traitv1.KnativeServiceTrait{
+		Trait: traitv1.Trait{
+			Enabled: ptr.To(true),
+		},
+	}
 	traitCatalog := NewCatalog(nil)
 
 	conditions, err := traitCatalog.apply(environment)

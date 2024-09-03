@@ -21,18 +21,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
-	"regexp"
+	"sort"
 	"strings"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/v2/pkg/client"
-	"github.com/apache/camel-k/v2/pkg/trait"
-	"github.com/apache/camel-k/v2/pkg/util/camel"
-	"github.com/apache/camel-k/v2/pkg/util/kamelets"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
-	"github.com/apache/camel-k/v2/pkg/util/resource"
+	"github.com/apache/camel-k/v2/pkg/util/sets"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -40,8 +36,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-var namedConfRegExp = regexp.MustCompile("([a-z0-9-.]+)/.*")
 
 // newCmdPromote --.
 func newCmdPromote(rootCmdOptions *RootCmdOptions) (*cobra.Command, *promoteCmdOptions) {
@@ -129,7 +123,7 @@ func (o *promoteCmdOptions) run(cmd *cobra.Command, args []string) error {
 	if sourceIntegration.Status.Phase != v1.IntegrationPhaseRunning {
 		return fmt.Errorf("could not promote an Integration in %s status", sourceIntegration.Status.Phase)
 	}
-	sourceKit, err := o.getIntegrationKit(c, sourceIntegration.Status.IntegrationKit.Name)
+	sourceKit, err := o.getIntegrationKit(c, sourceIntegration.Status.IntegrationKit)
 	if err != nil {
 		return err
 	}
@@ -139,30 +133,14 @@ func (o *promoteCmdOptions) run(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if !o.isDryRun() {
-		// Skip these checks if in dry mode
-		err = o.validateDestResources(c, sourceIntegration)
-		if err != nil {
-			return fmt.Errorf("could not validate destination resources: %w", err)
-		}
-	}
-
 	// Pipe promotion
 	if promotePipe {
-		destPipe, destKit := o.editPipe(sourcePipe, sourceIntegration, sourceKit)
+		destPipe := o.editPipe(sourcePipe, sourceIntegration, sourceKit)
 		if o.OutputFormat != "" {
-			if err := showIntegrationKitOutput(cmd, destKit, o.OutputFormat); err != nil {
-				return err
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), `---`)
 			return showPipeOutput(cmd, destPipe, o.OutputFormat, c.GetScheme())
 		}
 		// Ensure the destination namespace has access to the source namespace images
 		err = addSystemPullerRoleBinding(o.Context, c, sourceIntegration.Namespace, destPipe.Namespace)
-		if err != nil {
-			return err
-		}
-		_, err = o.replaceResource(destKit)
 		if err != nil {
 			return err
 		}
@@ -179,20 +157,12 @@ func (o *promoteCmdOptions) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Plain Integration promotion
-	destIntegration, destKit := o.editIntegration(sourceIntegration, sourceKit)
+	destIntegration := o.editIntegration(sourceIntegration, sourceKit)
 	if o.OutputFormat != "" {
-		if err := showIntegrationKitOutput(cmd, destKit, o.OutputFormat); err != nil {
-			return err
-		}
-		fmt.Fprintln(cmd.OutOrStdout(), `---`)
 		return showIntegrationOutput(cmd, destIntegration, o.OutputFormat)
 	}
 	// Ensure the destination namespace has access to the source namespace images
 	err = addSystemPullerRoleBinding(o.Context, c, sourceIntegration.Namespace, destIntegration.Namespace)
-	if err != nil {
-		return err
-	}
-	_, err = o.replaceResource(destKit)
 	if err != nil {
 		return err
 	}
@@ -248,11 +218,14 @@ func (o *promoteCmdOptions) getIntegration(c client.Client, name string) (*v1.In
 	return &it, nil
 }
 
-func (o *promoteCmdOptions) getIntegrationKit(c client.Client, name string) (*v1.IntegrationKit, error) {
-	ik := v1.NewIntegrationKit(o.Namespace, name)
+func (o *promoteCmdOptions) getIntegrationKit(c client.Client, ref *corev1.ObjectReference) (*v1.IntegrationKit, error) {
+	if ref == nil {
+		return nil, nil
+	}
+	ik := v1.NewIntegrationKit(ref.Namespace, ref.Name)
 	key := k8sclient.ObjectKey{
-		Name:      name,
-		Namespace: o.Namespace,
+		Name:      ref.Name,
+		Namespace: ref.Namespace,
 	}
 	if err := c.Get(o.Context, key, ik); err != nil {
 		return nil, err
@@ -261,276 +234,63 @@ func (o *promoteCmdOptions) getIntegrationKit(c client.Client, name string) (*v1
 	return ik, nil
 }
 
-func (o *promoteCmdOptions) validateDestResources(c client.Client, it *v1.Integration) error {
-	var configmaps []string
-	var secrets []string
-	var pvcs []string
-	var kamelets []string
-
-	// Mount trait
-	mount, err := toPropertyMap(it.Spec.Traits.Mount)
-	if err != nil {
-		return err
-	}
-	for t, v := range mount {
-		switch t {
-		case "configs":
-			list, ok := v.([]interface{})
-			if !ok {
-				return fmt.Errorf("invalid %s type: %s, value: %s", t, reflect.TypeOf(v), v)
-			}
-			for _, cn := range list {
-				s, ok := cn.(string)
-				if !ok {
-					return fmt.Errorf("invalid %s type: %s, value: %s", t, reflect.TypeOf(cn), cn)
-				}
-				if conf, parseErr := resource.ParseConfig(s); parseErr == nil {
-					if conf.StorageType() == resource.StorageTypeConfigmap {
-						configmaps = append(configmaps, conf.Name())
-					} else if conf.StorageType() == resource.StorageTypeSecret {
-						secrets = append(secrets, conf.Name())
-					}
-				} else {
-					return parseErr
-				}
-			}
-		case "resources":
-			list, ok := v.([]interface{})
-			if !ok {
-				return fmt.Errorf("invalid %s type: %s, value: %s", t, reflect.TypeOf(v), v)
-			}
-			for _, cn := range list {
-				s, ok := cn.(string)
-				if !ok {
-					return fmt.Errorf("invalid %s type: %s, value: %s", t, reflect.TypeOf(cn), cn)
-				}
-				if conf, parseErr := resource.ParseResource(s); parseErr == nil {
-					if conf.StorageType() == resource.StorageTypeConfigmap {
-						configmaps = append(configmaps, conf.Name())
-					} else if conf.StorageType() == resource.StorageTypeSecret {
-						secrets = append(secrets, conf.Name())
-					}
-				} else {
-					return parseErr
-				}
-			}
-		case "volumes":
-			list, ok := v.([]interface{})
-			if !ok {
-				return fmt.Errorf("invalid %s type: %s, value: %s", t, reflect.TypeOf(v), v)
-			}
-			for _, cn := range list {
-				s, ok := cn.(string)
-				if !ok {
-					return fmt.Errorf("invalid %s type: %s, value: %s", t, reflect.TypeOf(cn), cn)
-				}
-				if conf, parseErr := resource.ParseVolume(s); parseErr == nil {
-					if conf.StorageType() == resource.StorageTypePVC {
-						pvcs = append(pvcs, conf.Name())
-					}
-				} else {
-					return parseErr
-				}
-			}
-		}
-	}
-
-	// OpenAPI trait
-	openapi, err := toPropertyMap(it.Spec.Traits.OpenAPI)
-	if err != nil {
-		return err
-	}
-	for k, v := range openapi {
-		if k != "configmaps" {
-			continue
-		}
-		if list, ok := v.([]string); ok {
-			configmaps = append(configmaps, list...)
-			break
-		}
-	}
-
-	// Kamelets trait
-	kamelet, err := toPropertyMap(it.Spec.Traits.Kamelets)
-	if err != nil {
-		return err
-	}
-	if list, ok := kamelet["list"].(string); ok {
-		kamelets = strings.Split(list, ",")
-	}
-	sourceKamelets, err := o.listKamelets(c, it)
-	if err != nil {
-		return err
-	}
-	kamelets = append(kamelets, sourceKamelets...)
-
-	anyError := false
-	var errorTrace string
-	for _, name := range configmaps {
-		if !existsCm(o.Context, c, name, o.To) {
-			anyError = true
-			errorTrace += fmt.Sprintf("\n\tConfigmap %s is missing from %s namespace", name, o.To)
-		}
-	}
-	for _, name := range secrets {
-		if !existsSecret(o.Context, c, name, o.To) {
-			anyError = true
-			errorTrace += fmt.Sprintf("\n\tSecret %s is missing from %s namespace", name, o.To)
-		}
-	}
-	for _, name := range pvcs {
-		if !existsPv(o.Context, c, name, o.To) {
-			anyError = true
-			errorTrace += fmt.Sprintf("\n\tPersistentVolume %s is missing from %s namespace", name, o.To)
-		}
-	}
-	for _, name := range kamelets {
-		if !existsKamelet(o.Context, c, name, o.To) {
-			anyError = true
-			errorTrace += fmt.Sprintf("\n\tKamelet %s is missing from %s namespace", name, o.To)
-		}
-	}
-
-	if anyError {
-		return fmt.Errorf(errorTrace)
-	}
-
-	return nil
-}
-
-func toPropertyMap(src interface{}) (map[string]interface{}, error) {
-	propMap, err := trait.ToPropertyMap(src)
-	if err != nil {
-		return nil, err
-	}
-	// Migrate legacy configuration properties before promoting
-	if err := trait.MigrateLegacyConfiguration(propMap); err != nil {
-		return nil, err
-	}
-
-	return propMap, nil
-}
-
-func (o *promoteCmdOptions) listKamelets(c client.Client, it *v1.Integration) ([]string, error) {
-	runtime := v1.RuntimeSpec{
-		Version:  it.Status.RuntimeVersion,
-		Provider: v1.RuntimeProviderQuarkus,
-	}
-	catalog, err := camel.LoadCatalog(o.Context, c, o.Namespace, runtime)
-	if err != nil {
-		return nil, err
-	}
-	kamelets, err := kamelets.ExtractKameletFromSources(o.Context, c, catalog, &kubernetes.Collection{}, it)
-	if err != nil {
-		return nil, err
-	}
-
-	var filtered []string
-	for _, k := range kamelets {
-		// We must remove any default source/sink
-		if k == "source" || k == "sink" {
-			continue
-		}
-
-		// We must drop any named configurations
-		match := namedConfRegExp.FindStringSubmatch(k)
-		if len(match) > 0 {
-			filtered = append(filtered, match[1])
-		} else {
-			filtered = append(filtered, k)
-		}
-	}
-
-	return filtered, nil
-}
-
-func existsCm(ctx context.Context, c client.Client, name string, namespace string) bool {
-	var obj corev1.ConfigMap
-	key := k8sclient.ObjectKey{
-		Name:      name,
-		Namespace: namespace,
-	}
-	if err := c.Get(ctx, key, &obj); err != nil {
-		return false
-	}
-
-	return true
-}
-
-func existsSecret(ctx context.Context, c client.Client, name string, namespace string) bool {
-	var obj corev1.Secret
-	key := k8sclient.ObjectKey{
-		Name:      name,
-		Namespace: namespace,
-	}
-	if err := c.Get(ctx, key, &obj); err != nil {
-		return false
-	}
-
-	return true
-}
-
-func existsPv(ctx context.Context, c client.Client, name string, namespace string) bool {
-	var obj corev1.PersistentVolume
-	key := k8sclient.ObjectKey{
-		Name:      name,
-		Namespace: namespace,
-	}
-	if err := c.Get(ctx, key, &obj); err != nil {
-		return false
-	}
-
-	return true
-}
-
-func existsKamelet(ctx context.Context, c client.Client, name string, namespace string) bool {
-	var obj v1.Kamelet
-	key := k8sclient.ObjectKey{
-		Name:      name,
-		Namespace: namespace,
-	}
-	if err := c.Get(ctx, key, &obj); err != nil {
-		return false
-	}
-
-	return true
-}
-
-func (o *promoteCmdOptions) editIntegration(it *v1.Integration, kit *v1.IntegrationKit) (*v1.Integration, *v1.IntegrationKit) {
+func (o *promoteCmdOptions) editIntegration(it *v1.Integration, kit *v1.IntegrationKit) *v1.Integration {
 	contImage := it.Status.Image
-	// IntegrationKit
-	dstKit := v1.NewIntegrationKit(o.To, kit.Name)
-	dstKit.Spec = *kit.Spec.DeepCopy()
-	dstKit.Annotations = cloneAnnotations(kit.Annotations, o.ToOperator)
-	dstKit.Labels = cloneLabels(kit.Labels)
-	dstKit.Labels = alterKitLabels(dstKit.Labels, kit)
-	dstKit.Spec.Image = contImage
 	// Integration
 	dstIt := v1.NewIntegration(o.To, it.Name)
 	dstIt.Spec = *it.Spec.DeepCopy()
 	dstIt.Annotations = cloneAnnotations(it.Annotations, o.ToOperator)
 	dstIt.Labels = cloneLabels(it.Labels)
-	dstIt.Spec.IntegrationKit = &corev1.ObjectReference{
-		Namespace: dstKit.Namespace,
-		Name:      dstKit.Name,
-		Kind:      dstKit.Kind,
+	dstIt.Spec.IntegrationKit = nil
+	if dstIt.Spec.Traits.Container == nil {
+		dstIt.Spec.Traits.Container = &traitv1.ContainerTrait{}
 	}
-	// We must provide the classpath expected for the IntegrationKit. This is calculated dynamically and
-	// would get lost when creating the promoted IntegrationKit (which is in .status.artifacts). For this reason
-	// we must report it in the promoted Integration.
-	kitClasspath := kit.Status.GetDependenciesPaths()
-	if len(kitClasspath) > 0 {
+	dstIt.Spec.Traits.Container.Image = contImage
+	if kit != nil {
+		// We must provide the classpath expected for the IntegrationKit. This is calculated dynamically and
+		// would get lost when creating the non managed build Integration. For this reason
+		// we must report it in the promoted Integration.
 		if dstIt.Spec.Traits.JVM == nil {
 			dstIt.Spec.Traits.JVM = &traitv1.JVMTrait{}
 		}
 		jvmTrait := dstIt.Spec.Traits.JVM
-		if jvmTrait.Classpath != "" {
-			jvmTrait.Classpath += ":"
+		mergedClasspath := getClasspath(kit, jvmTrait.Classpath)
+		jvmTrait.Classpath = mergedClasspath
+		// We must also set the runtime version so we pin it to the given catalog on which
+		// the container image was built
+		if dstIt.Spec.Traits.Camel == nil {
+			dstIt.Spec.Traits.Camel = &traitv1.CamelTrait{}
 		}
-		jvmTrait.Classpath += strings.Join(kitClasspath, ":")
+		dstIt.Spec.Traits.Camel.RuntimeVersion = kit.Status.RuntimeVersion
 	}
 
-	return &dstIt, dstKit
+	return &dstIt
+}
+
+// getClasspath merges the classpath required by the kit with any value provided in the trait.
+func getClasspath(kit *v1.IntegrationKit, jvmTraitClasspath string) string {
+	kitClasspathSet := kit.Status.GetDependenciesPaths()
+	if !kitClasspathSet.IsEmpty() {
+		if jvmTraitClasspath != "" {
+			jvmTraitClasspathSet := getClasspathSet(jvmTraitClasspath)
+			kitClasspathSet = sets.Union(kitClasspathSet, jvmTraitClasspathSet)
+		}
+		classPaths := kitClasspathSet.List()
+		sort.Strings(classPaths)
+
+		return strings.Join(classPaths, ":")
+	}
+
+	return jvmTraitClasspath
+}
+
+func getClasspathSet(cps string) *sets.Set {
+	s := sets.NewSet()
+	for _, cp := range strings.Split(cps, ":") {
+		s.Add(cp)
+	}
+
+	return s
 }
 
 // Return all annotations overriding the operator Id if provided.
@@ -562,54 +322,14 @@ func cloneLabels(lbs map[string]string) map[string]string {
 	return newMap
 }
 
-// Change labels expected by Integration Kit replacing the creator to reflect the
-// fact the new kit was cloned by another one instead.
-func alterKitLabels(lbs map[string]string, kit *v1.IntegrationKit) map[string]string {
-	lbs[v1.IntegrationKitTypeLabel] = v1.IntegrationKitTypeExternal
-	if lbs[kubernetes.CamelCreatorLabelKind] != "" {
-		delete(lbs, kubernetes.CamelCreatorLabelKind)
-	}
-	if lbs[kubernetes.CamelCreatorLabelName] != "" {
-		delete(lbs, kubernetes.CamelCreatorLabelName)
-	}
-	if lbs[kubernetes.CamelCreatorLabelNamespace] != "" {
-		delete(lbs, kubernetes.CamelCreatorLabelNamespace)
-	}
-	if lbs[kubernetes.CamelCreatorLabelVersion] != "" {
-		delete(lbs, kubernetes.CamelCreatorLabelVersion)
-	}
-
-	lbs[kubernetes.CamelClonedLabelKind] = v1.IntegrationKitKind
-	lbs[kubernetes.CamelClonedLabelName] = kit.Name
-	lbs[kubernetes.CamelClonedLabelNamespace] = kit.Namespace
-	lbs[kubernetes.CamelClonedLabelVersion] = kit.ResourceVersion
-
-	return lbs
-}
-
-func (o *promoteCmdOptions) editPipe(kb *v1.Pipe, it *v1.Integration, kit *v1.IntegrationKit) (*v1.Pipe, *v1.IntegrationKit) {
+func (o *promoteCmdOptions) editPipe(kb *v1.Pipe, it *v1.Integration, kit *v1.IntegrationKit) *v1.Pipe {
 	contImage := it.Status.Image
-	// IntegrationKit
-	dstKit := v1.NewIntegrationKit(o.To, kit.Name)
-	dstKit.Spec = *kit.Spec.DeepCopy()
-	dstKit.Annotations = cloneAnnotations(kit.Annotations, o.ToOperator)
-	dstKit.Labels = cloneLabels(kit.Labels)
-	dstKit.Labels = alterKitLabels(dstKit.Labels, kit)
-	dstKit.Spec.Image = contImage
 	// Pipe
 	dst := v1.NewPipe(o.To, kb.Name)
 	dst.Spec = *kb.Spec.DeepCopy()
 	dst.Annotations = cloneAnnotations(kb.Annotations, o.ToOperator)
 	dst.Labels = cloneLabels(kb.Labels)
-	if dst.Spec.Integration == nil {
-		dst.Spec.Integration = &v1.IntegrationSpec{}
-	}
-	dst.Spec.Integration.IntegrationKit = &corev1.ObjectReference{
-		Namespace: dstKit.Namespace,
-		Name:      dstKit.Name,
-		Kind:      dstKit.Kind,
-	}
-
+	dst.Annotations[fmt.Sprintf("%scontainer.image", v1.TraitAnnotationPrefix)] = contImage
 	if dst.Spec.Source.Ref != nil {
 		dst.Spec.Source.Ref.Namespace = o.To
 	}
@@ -624,22 +344,18 @@ func (o *promoteCmdOptions) editPipe(kb *v1.Pipe, it *v1.Integration, kit *v1.In
 		}
 	}
 
-	// We must provide the classpath expected for the IntegrationKit. This is calculated dynamically and
-	// would get lost when creating the promoted IntegrationKit (which is in .status.artifacts). For this reason
-	// we must report it in the promoted Integration.
-	kitClasspath := kit.Status.GetDependenciesPaths()
-	if len(kitClasspath) > 0 {
-		if dst.Spec.Integration.Traits.JVM == nil {
-			dst.Spec.Integration.Traits.JVM = &traitv1.JVMTrait{}
-		}
-		jvmTrait := dst.Spec.Integration.Traits.JVM
-		if jvmTrait.Classpath != "" {
-			jvmTrait.Classpath += ":"
-		}
-		jvmTrait.Classpath += strings.Join(kitClasspath, ":")
+	if kit != nil {
+		// We must provide the classpath expected for the IntegrationKit. This is calculated dynamically and
+		// would get lost when creating the non managed build Integration. For this reason
+		// we must report it in the promoted Integration.
+		mergedClasspath := getClasspath(kit, dst.Annotations[fmt.Sprintf("%sjvm.classpath", v1.TraitAnnotationPrefix)])
+		dst.Annotations[fmt.Sprintf("%sjvm.classpath", v1.TraitAnnotationPrefix)] = mergedClasspath
+		// We must also set the runtime version so we pin it to the given catalog on which
+		// the container image was built
+		dst.Annotations[fmt.Sprintf("%scamel.runtime-version", v1.TraitAnnotationPrefix)] = kit.Status.RuntimeVersion
 	}
 
-	return &dst, dstKit
+	return &dst
 }
 
 func (o *promoteCmdOptions) replaceResource(res k8sclient.Object) (bool, error) {

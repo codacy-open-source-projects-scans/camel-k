@@ -3057,6 +3057,15 @@ spec:
               baseImage:
                 description: base image used by the kit (could be another IntegrationKit)
                 type: string
+              catalog:
+                description: the catalog used to build/operate the IntegrationKit.
+                properties:
+                  provider:
+                    description: RuntimeProvider is the provider chosen for the runtime.
+                    type: string
+                  version:
+                    type: string
+                type: object
               conditions:
                 description: a list of conditions which happened for the events related
                   the kit
@@ -4335,6 +4344,11 @@ spec:
                         type: boolean
                       host:
                         description: To configure the host exposed by the ingress.
+                        type: string
+                      ingressClassName:
+                        description: |-
+                          The Ingress class name as defined by the Ingress spec
+                          See https://kubernetes.io/docs/concepts/services-networking/ingress/
                         type: string
                       path:
                         description: To configure the path exposed by the ingress
@@ -6432,6 +6446,11 @@ spec:
                       host:
                         description: To configure the host exposed by the ingress.
                         type: string
+                      ingressClassName:
+                        description: |-
+                          The Ingress class name as defined by the Ingress spec
+                          See https://kubernetes.io/docs/concepts/services-networking/ingress/
+                        type: string
                       path:
                         description: To configure the path exposed by the ingress
                           (default `/`).
@@ -8433,6 +8452,11 @@ spec:
                       host:
                         description: To configure the host exposed by the ingress.
                         type: string
+                      ingressClassName:
+                        description: |-
+                          The Ingress class name as defined by the Ingress spec
+                          See https://kubernetes.io/docs/concepts/services-networking/ingress/
+                        type: string
                       path:
                         description: To configure the path exposed by the ingress
                           (default `/`).
@@ -10411,6 +10435,11 @@ spec:
                       host:
                         description: To configure the host exposed by the ingress.
                         type: string
+                      ingressClassName:
+                        description: |-
+                          The Ingress class name as defined by the Ingress spec
+                          See https://kubernetes.io/docs/concepts/services-networking/ingress/
+                        type: string
                       path:
                         description: To configure the path exposed by the ingress
                           (default `/`).
@@ -11396,6 +11425,10 @@ spec:
     - description: The runtime provider
       jsonPath: .status.runtimeVersion
       name: Runtime Version
+      type: string
+    - description: The catalog version
+      jsonPath: .status.catalog.version
+      name: Catalog Version
       type: string
     - description: The integration kit
       jsonPath: .status.integrationKit.name
@@ -18425,6 +18458,11 @@ spec:
                       host:
                         description: To configure the host exposed by the ingress.
                         type: string
+                      ingressClassName:
+                        description: |-
+                          The Ingress class name as defined by the Ingress spec
+                          See https://kubernetes.io/docs/concepts/services-networking/ingress/
+                        type: string
                       path:
                         description: To configure the path exposed by the ingress
                           (default `/`).
@@ -19374,6 +19412,15 @@ spec:
                 items:
                   type: string
                 type: array
+              catalog:
+                description: the catalog used to build/operate the Integration.
+                properties:
+                  provider:
+                    description: RuntimeProvider is the provider chosen for the runtime.
+                    type: string
+                  version:
+                    type: string
+                type: object
               conditions:
                 description: a list of events happened for the Integration
                 items:
@@ -26797,6 +26844,11 @@ spec:
                           host:
                             description: To configure the host exposed by the ingress.
                             type: string
+                          ingressClassName:
+                            description: |-
+                              The Ingress class name as defined by the Ingress spec
+                              See https://kubernetes.io/docs/concepts/services-networking/ingress/
+                            type: string
                           path:
                             description: To configure the path exposed by the ingress
                               (default `/`).
@@ -28588,9 +28640,21 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: The Kamelet phase
-      jsonPath: .status.phase
+    - description: The Kamelet type
+      jsonPath: .metadata.labels.camel\.apache\.org\/kamelet\.type
       name: Type
+      type: string
+    - description: The Kamelet provider
+      jsonPath: .metadata.annotations.camel\.apache\.org\/provider
+      name: Provider
+      type: string
+    - description: The Kamelet bundled
+      jsonPath: .metadata.labels.camel\.apache\.org\/kamelet\.bundled
+      name: Bundled
+      type: string
+    - description: The Camel compatible version
+      jsonPath: .metadata.annotations.camel\.apache\.org\/catalog\.version
+      name: Camel Version
       type: string
     name: v1
     schema:
@@ -37071,6 +37135,11 @@ spec:
                             type: boolean
                           host:
                             description: To configure the host exposed by the ingress.
+                            type: string
+                          ingressClassName:
+                            description: |-
+                              The Ingress class name as defined by the Ingress spec
+                              See https://kubernetes.io/docs/concepts/services-networking/ingress/
                             type: string
                           path:
                             description: To configure the path exposed by the ingress

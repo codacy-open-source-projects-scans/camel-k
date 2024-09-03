@@ -183,21 +183,19 @@ func TestDetermineControllerStrategyAutoKnative(t *testing.T) {
 }
 
 func TestDetermineControllerStrategySyntheticKitDefault(t *testing.T) {
-	e := createSyntethicKitTestEnvironment(t, v1.TraitProfileKnative)
+	e := createNonManagedBuildTestEnvironment(t, v1.TraitProfileKnative)
 	strategy, err := e.DetermineControllerStrategy()
 	require.NoError(t, err)
 	assert.Equal(t, DefaultControllerStrategy, strategy)
 }
 
 func TestDetermineControllerStrategySyntheticKitForceKnative(t *testing.T) {
-	e := createSyntethicKitTestEnvironment(t, v1.TraitProfileKnative)
-	e.Integration.Spec.Traits = v1.Traits{
-		KnativeService: &trait.KnativeServiceTrait{
-			Trait: trait.Trait{
-				Enabled: ptr.To(true),
-			},
-			Auto: ptr.To(false),
+	e := createNonManagedBuildTestEnvironment(t, v1.TraitProfileKnative)
+	e.Integration.Spec.Traits.KnativeService = &trait.KnativeServiceTrait{
+		Trait: trait.Trait{
+			Enabled: ptr.To(true),
 		},
+		Auto: ptr.To(false),
 	}
 	e.Platform.ResyncStatusFullConfig()
 	_, err := e.Catalog.apply(e)
@@ -278,13 +276,16 @@ func createTestEnvironment(t *testing.T, profile v1.TraitProfile) *Environment {
 	return environment
 }
 
-func createSyntethicKitTestEnvironment(t *testing.T, profile v1.TraitProfile) *Environment {
+func createNonManagedBuildTestEnvironment(t *testing.T, profile v1.TraitProfile) *Environment {
 	t.Helper()
 	client, _ := test.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
+	catalog, err := camel.DefaultCatalog()
+	require.NoError(t, err)
 	environment := &Environment{
-		Catalog: traitCatalog,
-		Client:  client,
+		CamelCatalog: catalog,
+		Catalog:      traitCatalog,
+		Client:       client,
 		Integration: &v1.Integration{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test",
@@ -298,16 +299,11 @@ func createSyntethicKitTestEnvironment(t *testing.T, profile v1.TraitProfile) *E
 			},
 			Spec: v1.IntegrationSpec{
 				Profile: profile,
-			},
-		},
-		IntegrationKit: &v1.IntegrationKit{
-			ObjectMeta: metav1.ObjectMeta{
-				Labels: map[string]string{
-					v1.IntegrationKitTypeLabel: v1.IntegrationKitTypeSynthetic,
+				Traits: v1.Traits{
+					Container: &trait.ContainerTrait{
+						Image: "my-container-image",
+					},
 				},
-			},
-			Status: v1.IntegrationKitStatus{
-				Phase: v1.IntegrationKitPhaseReady,
 			},
 		},
 		Platform: &v1.IntegrationPlatform{
@@ -325,7 +321,7 @@ func createSyntethicKitTestEnvironment(t *testing.T, profile v1.TraitProfile) *E
 
 	environment.Platform.ResyncStatusFullConfig()
 
-	_, err := traitCatalog.apply(environment)
+	_, err = traitCatalog.apply(environment)
 	require.NoError(t, err)
 
 	return environment
