@@ -36,6 +36,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -546,6 +547,10 @@ func IntegrationPod(t *testing.T, ctx context.Context, ns string, name string) f
 		if len(pods) == 0 {
 			return nil
 		}
+
+		sort.SliceStable(pods, func(i, j int) bool {
+			return pods[i].GetCreationTimestamp().Time.After(pods[j].GetCreationTimestamp().Time)
+		})
 		return &pods[0]
 	}
 }
@@ -2668,10 +2673,12 @@ func CreateKameletWithID(t *testing.T, operatorID string, ctx context.Context, n
 				Labels:    labels,
 			},
 			Spec: v1.KameletSpec{
-				Definition: &v1.JSONSchemaProps{
-					Properties: properties,
+				KameletSpecBase: v1.KameletSpecBase{
+					Definition: &v1.JSONSchemaProps{
+						Properties: properties,
+					},
+					Template: asTemplate(t, template),
 				},
-				Template: asTemplate(t, template),
 			},
 		}
 
