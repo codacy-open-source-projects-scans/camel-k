@@ -1,5 +1,4 @@
-#!/bin/bash
-
+# camel-k: language=yaml
 # ---------------------------------------------------------------------------
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
@@ -8,7 +7,7 @@
 # (the "License"); you may not use this file except in compliance with
 # the License.  You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#      http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,14 +16,14 @@
 # limitations under the License.
 # ---------------------------------------------------------------------------
 
-set -e
+- from:
+    uri: "knative:endpoint/knative1"
+    steps:
+      - setBody:
+          constant: "knative1"
 
-location=$(dirname $0)
-
-rm -rf /tmp/camel-k-runtime
-git clone --depth 1 https://github.com/apache/camel-k-runtime.git /tmp/camel-k-runtime
-ck_runtime_version=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout -f /tmp/camel-k-runtime/pom.xml)
-echo "INFO: last Camel K runtime version set at $ck_runtime_version"
-sed -i "s/^DEFAULT_RUNTIME_VERSION := .*$/DEFAULT_RUNTIME_VERSION := $ck_runtime_version/" $location/Makefile
-
-rm -rf /tmp/camel-k-runtime/
+- from:
+    uri: "knative:endpoint/knative2"
+    steps:
+      - setBody:
+          constant: "knative2"
