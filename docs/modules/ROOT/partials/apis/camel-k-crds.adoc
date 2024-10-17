@@ -8008,7 +8008,9 @@ Syntax: [configmap{vbar}secret]:name[/key][@path], where name represents the res
 |
 
 
-A list of Persistent Volume Claims to be mounted. Syntax: [pvcname:/container/path]
+A list of Persistent Volume Claims to be mounted. Syntax: [pvcname:/container/path]. If the PVC is not found, the Integration fails.
+You can use the syntax [pvcname:/container/path:size:accessMode<:storageClass>] to create a dynamic PVC based on the Storage Class provided
+or the default cluster Storage Class. However, if the PVC exists, the operator would mount it.
 
 |`emptyDirs` +
 []string
@@ -8745,6 +8747,8 @@ List of Services in the form [[apigroup/]version:]kind:[namespace/]name
 
 The Service trait exposes the integration with a Service resource so that it can be accessed by other applications
 (or integrations) in the same namespace.
+
+NOTE: this trait is automatically disabled if the Knative Service trait is enabled.
 
 It's enabled by default if the integration depends on a Camel component that can expose a HTTP endpoint.
 
