@@ -31,6 +31,7 @@ import (
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	"github.com/apache/camel-k/v2/pkg/util/boolean"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
 	"github.com/apache/camel-k/v2/pkg/util/gzip"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
@@ -135,14 +136,67 @@ func TestEmptyDirVolumeIntegrationPhaseDeploying(t *testing.T) {
 	assert.Len(t, spec.Containers[0].VolumeMounts, 3)
 	assert.Len(t, spec.Volumes, 3)
 
+	var emptyDirVolume *corev1.Volume
+	for _, v := range spec.Volumes {
+		if v.Name == "my-empty-dir" {
+			emptyDirVolume = &v
+			break
+		}
+	}
+
+	assert.NotNil(t, emptyDirVolume)
+	// Default applied by operator
+	assert.Equal(t, "500Mi", emptyDirVolume.EmptyDir.SizeLimit.String())
+
 	assert.Condition(t, func() bool {
-		for _, v := range spec.Volumes {
-			if v.Name == "my-empty-dir" {
-				return true
+		for _, container := range spec.Containers {
+			if container.Name == "integration" {
+				for _, volumeMount := range container.VolumeMounts {
+					if volumeMount.Name == "my-empty-dir" {
+						return true
+					}
+				}
 			}
 		}
 		return false
 	})
+}
+
+func TestEmptyDirVolumeWithSizeLimitIntegrationPhaseDeploying(t *testing.T) {
+	traitCatalog := NewCatalog(nil)
+
+	environment := getNominalEnv(t, traitCatalog)
+	environment.Integration.Spec.Traits.Mount = &traitv1.MountTrait{
+		EmptyDirs: []string{"my-empty-dir:/some/path:450Mi"},
+	}
+	environment.Platform.ResyncStatusFullConfig()
+	conditions, traits, err := traitCatalog.apply(environment)
+
+	require.NoError(t, err)
+	assert.NotEmpty(t, traits)
+	assert.NotEmpty(t, conditions)
+	assert.NotEmpty(t, environment.ExecutedTraits)
+	assert.NotNil(t, environment.GetTrait("mount"))
+
+	deployment := environment.Resources.GetDeployment(func(service *appsv1.Deployment) bool {
+		return service.Name == "hello"
+	})
+	assert.NotNil(t, deployment)
+	spec := deployment.Spec.Template.Spec
+
+	assert.Len(t, spec.Containers[0].VolumeMounts, 3)
+	assert.Len(t, spec.Volumes, 3)
+
+	var emptyDirVolume *corev1.Volume
+	for _, v := range spec.Volumes {
+		if v.Name == "my-empty-dir" {
+			emptyDirVolume = &v
+			break
+		}
+	}
+	assert.NotNil(t, emptyDirVolume)
+	assert.Equal(t, "450Mi", emptyDirVolume.EmptyDir.SizeLimit.String())
+
 	assert.Condition(t, func() bool {
 		for _, container := range spec.Containers {
 			if container.Name == "integration" {
@@ -340,4 +394,167 @@ func TestMountVolumesCreateUserStorageClass(t *testing.T) {
 	pvc, err := kubernetes.LookupPersistentVolumeClaim(e.Ctx, e.Client, e.Integration.Namespace, "my-pvc")
 	assert.NoError(t, err)
 	assert.NotNil(t, pvc)
+}
+
+func TestConfigureVolumesAndMountsSources(t *testing.T) {
+	trait, _ := newMountTrait().(*mountTrait)
+	env := Environment{
+		Resources: kubernetes.NewCollection(),
+		Integration: &v1.Integration{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      TestDeploymentName,
+				Namespace: "ns",
+			},
+			Spec: v1.IntegrationSpec{
+				Sources: []v1.SourceSpec{
+					{
+						DataSpec: v1.DataSpec{
+							Name:       "source1.java",
+							ContentRef: "my-cm1",
+							ContentKey: "source1.java",
+						},
+						Type: "data",
+					},
+					{
+						DataSpec: v1.DataSpec{
+							Name:       "source2.java",
+							ContentRef: "my-cm2",
+						},
+						Type: "data",
+					},
+				},
+			},
+		},
+		Catalog: &Catalog{},
+	}
+
+	vols := make([]corev1.Volume, 0)
+	mnts := make([]corev1.VolumeMount, 0)
+
+	trait.configureCamelVolumesAndMounts(&env, &vols, &mnts)
+
+	assert.Len(t, vols, 2)
+	assert.Len(t, mnts, 2)
+
+	v := findVolume(vols, func(v corev1.Volume) bool { return v.ConfigMap.Name == "my-cm1" })
+	assert.NotNil(t, v)
+	assert.NotNil(t, v.VolumeSource.ConfigMap)
+	assert.Len(t, v.VolumeSource.ConfigMap.Items, 1)
+	assert.Equal(t, "source1.java", v.VolumeSource.ConfigMap.Items[0].Key)
+
+	m := findVVolumeMount(mnts, func(m corev1.VolumeMount) bool { return m.Name == v.Name })
+	assert.NotNil(t, m)
+
+	v = findVolume(vols, func(v corev1.Volume) bool { return v.ConfigMap.Name == "my-cm2" })
+	assert.NotNil(t, v)
+	assert.NotNil(t, v.VolumeSource.ConfigMap)
+	assert.Len(t, v.VolumeSource.ConfigMap.Items, 1)
+	assert.Equal(t, "content", v.VolumeSource.ConfigMap.Items[0].Key)
+
+	m = findVVolumeMount(mnts, func(m corev1.VolumeMount) bool { return m.Name == v.Name })
+	assert.NotNil(t, m)
+}
+
+func TestConfigureVolumesAndMountsSourcesInNativeMode(t *testing.T) {
+	trait, _ := newMountTrait().(*mountTrait)
+	traitList := make([]Trait, 0, len(FactoryList))
+	quarkus, ok := newQuarkusTrait().(*quarkusTrait)
+	assert.True(t, ok, "A Quarkus trait was expected")
+	quarkus.Modes = []traitv1.QuarkusMode{traitv1.NativeQuarkusMode}
+	traitList = append(traitList, quarkus)
+	env := Environment{
+		Resources: kubernetes.NewCollection(),
+		Integration: &v1.Integration{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      TestDeploymentName,
+				Namespace: "ns",
+			},
+			Spec: v1.IntegrationSpec{
+				Sources: []v1.SourceSpec{
+					{
+						DataSpec: v1.DataSpec{
+							Name:       "source1.xml",
+							ContentRef: "my-cm1",
+							ContentKey: "source1.xml",
+						},
+						Type: "data",
+					},
+					{
+						DataSpec: v1.DataSpec{
+							Name:       "source2.java",
+							ContentRef: "my-cm2",
+						},
+						Type: "data",
+					},
+					{
+						DataSpec: v1.DataSpec{
+							Name:       "source1.java",
+							ContentRef: "my-cm3",
+							ContentKey: "source1.java",
+						},
+						Type: "data",
+					},
+					{
+						DataSpec: v1.DataSpec{
+							Name:       "source2.xml",
+							ContentRef: "my-cm4",
+						},
+						Type: "data",
+					},
+				},
+			},
+			Status: v1.IntegrationStatus{
+				Phase: v1.IntegrationPhaseRunning,
+			},
+		},
+		IntegrationKit: &v1.IntegrationKit{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					v1.IntegrationKitLayoutLabel: v1.IntegrationKitLayoutNativeSources,
+				},
+				Namespace: "ns",
+			},
+		},
+		Catalog: &Catalog{
+			traits: traitList,
+		},
+		CamelCatalog: &camel.RuntimeCatalog{
+			CamelCatalogSpec: v1.CamelCatalogSpec{
+				Loaders: map[string]v1.CamelLoader{
+					"java": {
+						Metadata: map[string]string{
+							"native":                         boolean.TrueString,
+							"sources-required-at-build-time": boolean.TrueString,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	vols := make([]corev1.Volume, 0)
+	mnts := make([]corev1.VolumeMount, 0)
+
+	trait.configureCamelVolumesAndMounts(&env, &vols, &mnts)
+
+	assert.Len(t, vols, 2)
+	assert.Len(t, mnts, 2)
+
+	v := findVolume(vols, func(v corev1.Volume) bool { return v.ConfigMap.Name == "my-cm1" })
+	assert.NotNil(t, v)
+	assert.NotNil(t, v.VolumeSource.ConfigMap)
+	assert.Len(t, v.VolumeSource.ConfigMap.Items, 1)
+	assert.Equal(t, "source1.xml", v.VolumeSource.ConfigMap.Items[0].Key)
+
+	m := findVVolumeMount(mnts, func(m corev1.VolumeMount) bool { return m.Name == v.Name })
+	assert.NotNil(t, m)
+
+	v = findVolume(vols, func(v corev1.Volume) bool { return v.ConfigMap.Name == "my-cm4" })
+	assert.NotNil(t, v)
+	assert.NotNil(t, v.VolumeSource.ConfigMap)
+	assert.Len(t, v.VolumeSource.ConfigMap.Items, 1)
+	assert.Equal(t, "content", v.VolumeSource.ConfigMap.Items[0].Key)
+
+	m = findVVolumeMount(mnts, func(m corev1.VolumeMount) bool { return m.Name == v.Name })
+	assert.NotNil(t, m)
 }
