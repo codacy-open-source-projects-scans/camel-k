@@ -18,8 +18,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # Labels to add to all resources and selectors.
-commonLabels:
-  app: camel-k
+labels:
+  - pairs:
+      app: camel-k
+    includeSelectors: true
 
 resources:
 - ../manager
@@ -28,12 +30,10 @@ resources:
 - ../scorecard
 - ../rbac
 - ../rbac/namespaced
-- ../rbac/openshift
-- ../rbac/openshift/namespaced
 
 patchesStrategicMerge:
 - patch-delete-user-cluster-role.yaml
 images:
 - name: docker.io/apache/camel-k
   newName: docker.io/apache/camel-k
-  newTag: 2.5.0-SNAPSHOT
+  newTag: 2.6.0-SNAPSHOT

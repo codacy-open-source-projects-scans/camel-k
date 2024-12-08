@@ -29,7 +29,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
-	"github.com/apache/camel-k/v2/pkg/apis/camel/v1alpha1"
 	"github.com/apache/camel-k/v2/pkg/client"
 	"github.com/apache/camel-k/v2/pkg/util"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
@@ -192,20 +191,6 @@ func ToTraitMap(traits interface{}) (Options, error) {
 	return traitMap, nil
 }
 
-// ToPropertyMap accepts a trait and converts it to a map of trait properties.
-func ToPropertyMap(trait interface{}) (map[string]interface{}, error) {
-	data, err := json.Marshal(trait)
-	if err != nil {
-		return nil, err
-	}
-	propMap := make(map[string]interface{})
-	if err = json.Unmarshal(data, &propMap); err != nil {
-		return nil, err
-	}
-
-	return propMap, nil
-}
-
 // MigrateLegacyConfiguration moves up the legacy configuration in a trait to the new top-level properties.
 // Values of the new properties always take precedence over the ones from the legacy configuration
 // with the same property names.
@@ -301,21 +286,6 @@ func PipesHaveSameTraits(c client.Client, i1 *v1.Pipe, i2 *v1.Pipe) (bool, error
 	return Equals(c1, c2), nil
 }
 
-// KameletBindingsHaveSameTraits return if traits are the same.
-// Deprecated.
-func KameletBindingsHaveSameTraits(c client.Client, i1 *v1alpha1.KameletBinding, i2 *v1alpha1.KameletBinding) (bool, error) {
-	c1, err := NewTraitsOptionsForKameletBinding(c, i1)
-	if err != nil {
-		return false, err
-	}
-	c2, err := NewTraitsOptionsForKameletBinding(c, i2)
-	if err != nil {
-		return false, err
-	}
-
-	return Equals(c1, c2), nil
-}
-
 // IntegrationAndPipeSameTraits return if traits are the same.
 // The comparison is done for the subset of traits defines on the binding as during the trait processing,
 // some traits may be added to the Integration i.e. knative configuration in case of sink binding.
@@ -328,30 +298,6 @@ func IntegrationAndPipeSameTraits(c client.Client, i1 *v1.Integration, i2 *v1.Pi
 	if err != nil {
 		return false, err
 	}
-	toCompare := make(Options)
-	for k := range klbOpts {
-		if v, ok := itOpts[k]; ok {
-			toCompare[k] = v
-		}
-	}
-
-	return Equals(klbOpts, toCompare), nil
-}
-
-// IntegrationAndKameletBindingSameTraits return if traits are the same.
-// The comparison is done for the subset of traits defines on the binding as during the trait processing,
-// some traits may be added to the Integration i.e. knative configuration in case of sink binding.
-// Deprecated.
-func IntegrationAndKameletBindingSameTraits(c client.Client, i1 *v1.Integration, i2 *v1alpha1.KameletBinding) (bool, error) {
-	itOpts, err := NewSpecTraitsOptionsForIntegration(c, i1)
-	if err != nil {
-		return false, err
-	}
-	klbOpts, err := NewTraitsOptionsForKameletBinding(c, i2)
-	if err != nil {
-		return false, err
-	}
-
 	toCompare := make(Options)
 	for k := range klbOpts {
 		if v, ok := itOpts[k]; ok {
@@ -497,36 +443,7 @@ func NewSpecTraitsOptionsForIntegrationKit(c client.Client, i *v1.IntegrationKit
 func NewTraitsOptionsForPipe(c client.Client, pipe *v1.Pipe) (Options, error) {
 	options := Options{}
 
-	if pipe.Spec.Integration != nil {
-		m1, err := ToTraitMap(pipe.Spec.Integration.Traits)
-		if err != nil {
-			return nil, err
-		}
-
-		for k, v := range m1 {
-			options[k] = v
-		}
-	}
-
 	return newTraitsOptions(c, options, pipe.ObjectMeta.Annotations)
-}
-
-// Deprecated.
-func NewTraitsOptionsForKameletBinding(c client.Client, kb *v1alpha1.KameletBinding) (Options, error) {
-	options := Options{}
-
-	if kb.Spec.Integration != nil {
-		m1, err := ToTraitMap(kb.Spec.Integration.Traits)
-		if err != nil {
-			return nil, err
-		}
-
-		for k, v := range m1 {
-			options[k] = v
-		}
-	}
-
-	return newTraitsOptions(c, options, kb.ObjectMeta.Annotations)
 }
 
 // HasMatchingTraits verifies if two traits options match.

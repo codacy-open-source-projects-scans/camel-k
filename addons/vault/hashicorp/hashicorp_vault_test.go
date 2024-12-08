@@ -20,7 +20,6 @@ package hashicorp
 import (
 	"testing"
 
-	"github.com/apache/camel-k/v2/pkg/util/test"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 
@@ -48,7 +47,7 @@ func TestHashicorpVaultTraitApply(t *testing.T) {
 	ok, condition, err := secrets.Configure(e)
 	require.NoError(t, err)
 	assert.True(t, ok)
-	assert.Nil(t, condition)
+	assert.NotNil(t, condition)
 
 	err = secrets.Apply(e)
 	require.NoError(t, err)
@@ -82,7 +81,7 @@ func TestHashicorpVaultTraitWithSecretApply(t *testing.T) {
 	ok, condition, err := secrets.Configure(e)
 	require.NoError(t, err)
 	assert.True(t, ok)
-	assert.Nil(t, condition)
+	assert.NotNil(t, condition)
 
 	err = secrets.Apply(e)
 	require.NoError(t, err)
@@ -116,7 +115,7 @@ func TestHashicorpVaultTraitWithConfigMapApply(t *testing.T) {
 	ok, condition, err := secrets.Configure(e)
 	require.NoError(t, err)
 	assert.True(t, ok)
-	assert.Nil(t, condition)
+	assert.NotNil(t, condition)
 
 	err = secrets.Apply(e)
 	require.NoError(t, err)
@@ -133,7 +132,7 @@ func createEnvironment(t *testing.T, catalogGen func() (*camel.RuntimeCatalog, e
 	t.Helper()
 
 	catalog, err := catalogGen()
-	client, _ := test.NewFakeClient(objects...)
+	client, _ := newFakeClient(objects...)
 	require.NoError(t, err)
 
 	e := trait.Environment{

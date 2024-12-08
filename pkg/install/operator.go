@@ -45,7 +45,6 @@ import (
 	"github.com/apache/camel-k/v2/pkg/util/minikube"
 	"github.com/apache/camel-k/v2/pkg/util/openshift"
 	"github.com/apache/camel-k/v2/pkg/util/patch"
-	image "github.com/apache/camel-k/v2/pkg/util/registry"
 )
 
 type OperatorConfiguration struct {
@@ -467,13 +466,13 @@ func installClusterRoleBinding(ctx context.Context, c client.Client, collection 
 func installOpenShiftRoles(ctx context.Context, c client.Client, namespace string, customizer ResourceCustomizer, collection *kubernetes.Collection, force bool, global bool) error {
 	if global {
 		return ResourcesOrCollect(ctx, c, namespace, collection, force, customizer,
-			"/config/rbac/openshift/descoped/operator-cluster-role-openshift.yaml",
-			"/config/rbac/openshift/descoped/operator-cluster-role-binding-openshift.yaml",
+			"/config/rbac/descoped/operator-cluster-role-openshift.yaml",
+			"/config/rbac/descoped/operator-cluster-role-binding-openshift.yaml",
 		)
 	} else {
 		return ResourcesOrCollect(ctx, c, namespace, collection, force, customizer,
-			"/config/rbac/openshift/namespaced/operator-role-openshift.yaml",
-			"/config/rbac/openshift/namespaced/operator-role-binding-openshift.yaml",
+			"/config/rbac/namespaced/operator-role-openshift.yaml",
+			"/config/rbac/namespaced/operator-role-binding-openshift.yaml",
 		)
 	}
 }
@@ -633,13 +632,6 @@ func NewPlatform(
 			address, err := minikube.FindRegistry(ctx, c)
 			if err != nil {
 				return nil, err
-			}
-			if address == nil {
-				// try KEP-1755
-				address, err = image.GetRegistryAddress(ctx, c)
-				if err != nil {
-					return nil, err
-				}
 			}
 
 			if address == nil || *address == "" {

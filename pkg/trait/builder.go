@@ -188,7 +188,7 @@ func (t *builderTrait) adaptDeprecatedFields() *TraitCondition {
 		m := "The limit-memory parameter is deprecated and may be removed in future releases. Make sure to use tasks-limit-memory parameter instead."
 		t.L.Info(m)
 		if condition == nil {
-			condition = NewIntegrationCondition("Builder", v1.IntegrationConditionTraitInfo, corev1.ConditionTrue, traitConfigurationReason, "")
+			condition = NewIntegrationCondition("Builder", v1.IntegrationConditionTraitInfo, corev1.ConditionTrue, TraitConfigurationReason, "")
 		}
 		condition = newOrAppend(condition, m)
 		t.TasksLimitMemory = append(t.TasksLimitMemory, fmt.Sprintf("builder:%s", t.LimitMemory))
@@ -199,7 +199,7 @@ func (t *builderTrait) adaptDeprecatedFields() *TraitCondition {
 
 func newOrAppend(condition *TraitCondition, message string) *TraitCondition {
 	if condition == nil {
-		condition = NewIntegrationCondition("Builder", v1.IntegrationConditionTraitInfo, corev1.ConditionTrue, traitConfigurationReason, message)
+		condition = NewIntegrationCondition("Builder", v1.IntegrationConditionTraitInfo, corev1.ConditionTrue, TraitConfigurationReason, message)
 	} else {
 		condition.message += "; " + message
 	}
@@ -435,8 +435,7 @@ func (t *builderTrait) builderTask(e *Environment, taskConf *v1.BuildConfigurati
 		mavenProfiles := make([]v1.ValueSource, 0)
 		for _, v := range t.MavenProfiles {
 			if v != "" {
-				mavenProfile, err := v1.DecodeValueSource(v, "profile.xml",
-					"illegal profile definition, syntax: configmap|secret:resource-name[/profile path]")
+				mavenProfile, err := v1.DecodeValueSource(v, "profile.xml")
 				if err != nil {
 					return nil, fmt.Errorf("invalid maven profile: %s: %w. ", v, err)
 				}

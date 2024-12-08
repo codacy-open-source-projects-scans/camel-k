@@ -40,6 +40,7 @@ import (
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/v2/pkg/client"
 	"github.com/apache/camel-k/v2/pkg/trait"
+	"github.com/apache/camel-k/v2/pkg/util"
 	"github.com/apache/camel-k/v2/pkg/util/digest"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
 	utilResource "github.com/apache/camel-k/v2/pkg/util/resource"
@@ -233,8 +234,12 @@ func (action *monitorAction) monitorPods(ctx context.Context, environment *trait
 		}
 		nonTerminatingPods++
 	}
-	podCount := int32(len(pendingPods.Items) + nonTerminatingPods)
-	integration.Status.Replicas = &podCount
+	podCount := len(pendingPods.Items) + nonTerminatingPods
+	replicas, err := util.IToInt32(podCount)
+	if err != nil {
+		return nil, err
+	}
+	integration.Status.Replicas = replicas
 
 	// Reconcile Integration phase and ready condition
 	if integration.Status.Phase == v1.IntegrationPhaseDeploying {
@@ -367,8 +372,7 @@ func getIntegrationSecretAndConfigmapResourceVersions(ctx context.Context, clien
 
 type controller interface {
 	checkReadyCondition(ctx context.Context) (bool, error)
-	getPodSpec() corev1.PodSpec
-	updateReadyCondition(readyPods int) bool
+	updateReadyCondition(readyPods int32) bool
 	hasTemplateIntegrationLabel() bool
 	getControllerName() string
 }
@@ -509,7 +513,7 @@ func arePodsFailingStatuses(integration *v1.Integration, pendingPods []corev1.Po
 
 // probeReadiness calls the readiness probes of the non-ready Pods directly to retrieve insights from the Camel runtime.
 // The func return the number of readyPods, the success of the probe and any error may have happened during its execution.
-func (action *monitorAction) probeReadiness(ctx context.Context, environment *trait.Environment, integration *v1.Integration, pods []corev1.Pod) (int, bool, error) {
+func (action *monitorAction) probeReadiness(ctx context.Context, environment *trait.Environment, integration *v1.Integration, pods []corev1.Pod) (int32, bool, error) {
 	// as a default we assume the Integration is Ready
 	readyCondition := v1.IntegrationCondition{
 		Type:   v1.IntegrationConditionReady,
@@ -517,8 +521,8 @@ func (action *monitorAction) probeReadiness(ctx context.Context, environment *tr
 		Pods:   make([]v1.PodCondition, len(pods)),
 	}
 
-	readyPods := 0
-	unreadyPods := 0
+	readyPods := int32(0)
+	unreadyPods := int32(0)
 
 	runtimeReady := true
 	runtimeFailed := false

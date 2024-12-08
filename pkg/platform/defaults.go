@@ -19,7 +19,6 @@ package platform
 
 import (
 	"context"
-	"fmt"
 	"runtime"
 	"strings"
 	"time"
@@ -30,16 +29,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
-
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/v2/pkg/client"
-	"github.com/apache/camel-k/v2/pkg/install"
 	"github.com/apache/camel-k/v2/pkg/kamelet/repository"
 	"github.com/apache/camel-k/v2/pkg/util/defaults"
 	"github.com/apache/camel-k/v2/pkg/util/log"
 	"github.com/apache/camel-k/v2/pkg/util/openshift"
-	image "github.com/apache/camel-k/v2/pkg/util/registry"
 )
 
 const (
@@ -85,11 +80,7 @@ func ConfigureDefaults(ctx context.Context, c client.Client, p *v1.IntegrationPl
 	}
 
 	if p.Status.Build.PublishStrategy == "" {
-		if p.Status.Cluster == v1.IntegrationPlatformClusterOpenShift {
-			p.Status.Build.PublishStrategy = v1.IntegrationPlatformBuildPublishStrategyS2I
-		} else {
-			p.Status.Build.PublishStrategy = v1.IntegrationPlatformBuildPublishStrategyJib
-		}
+		p.Status.Build.PublishStrategy = v1.IntegrationPlatformBuildPublishStrategyJib
 		log.Debugf("Integration Platform %s [%s]: setting publishing strategy %s", p.Name, p.Namespace, p.Status.Build.PublishStrategy)
 	}
 
@@ -109,13 +100,7 @@ func ConfigureDefaults(ctx context.Context, c client.Client, p *v1.IntegrationPl
 		return err
 	}
 
-	if p.Status.Build.BuildConfiguration.Strategy == v1.BuildStrategyPod {
-		if err := CreateBuilderServiceAccount(ctx, c, p); err != nil {
-			return fmt.Errorf("cannot ensure service account is present: %w", err)
-		}
-	}
-
-	err = configureRegistry(ctx, c, p, verbose)
+	err = configureRegistry(ctx, c, p)
 	if err != nil {
 		return err
 	}
@@ -131,39 +116,14 @@ func ConfigureDefaults(ctx context.Context, c client.Client, p *v1.IntegrationPl
 	return nil
 }
 
-func CreateBuilderServiceAccount(ctx context.Context, client client.Client, p *v1.IntegrationPlatform) error {
-	log.Debugf("Integration Platform %s [%s]: creating build service account", p.Name, p.Namespace)
-	sa := corev1.ServiceAccount{}
-	key := ctrl.ObjectKey{
-		Name:      BuilderServiceAccount,
-		Namespace: p.Namespace,
-	}
-
-	err := client.Get(ctx, key, &sa)
-	if err != nil && k8serrors.IsNotFound(err) {
-		return install.BuilderServiceAccountRoles(ctx, client, p.Namespace, p.Status.Cluster)
-	}
-
-	return err
-}
-
-func configureRegistry(ctx context.Context, c client.Client, p *v1.IntegrationPlatform, verbose bool) error {
+func configureRegistry(ctx context.Context, c client.Client, p *v1.IntegrationPlatform) error {
 	if p.Status.Cluster == v1.IntegrationPlatformClusterOpenShift &&
-		p.Status.Build.PublishStrategy != v1.IntegrationPlatformBuildPublishStrategyS2I &&
+		p.Status.Build.PublishStrategy == v1.IntegrationPlatformBuildPublishStrategyS2I &&
 		p.Status.Build.Registry.Address == "" {
 
 		err := configureForOpenShiftS2i(ctx, c, p)
 		if err != nil {
 			return err
-		}
-	}
-	if p.Status.Build.Registry.Address == "" {
-		// try KEP-1755
-		address, err := image.GetRegistryAddress(ctx, c)
-		if err != nil && verbose {
-			log.Error(err, "Cannot find a registry where to push images via KEP-1755")
-		} else if err == nil && address != nil {
-			p.Status.Build.Registry.Address = *address
 		}
 	}
 

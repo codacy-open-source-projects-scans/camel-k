@@ -24,24 +24,32 @@ PROJECT_PATH := $(patsubst %/,%,$(dir $(MKFILE_PATH)))
 LOCALBIN := $(PROJECT_PATH)/bin
 
 VERSIONFILE := pkg/util/defaults/defaults.go
-VERSION ?= 2.5.0-SNAPSHOT
+VERSION ?= 2.6.0-SNAPSHOT
 LAST_RELEASED_IMAGE_NAME := camel-k-operator
-LAST_RELEASED_VERSION ?= 2.4.0
+LAST_RELEASED_VERSION ?= 2.5.0
 DEFAULT_RUNTIME_VERSION := 3.15.0
+# Kubernetes tooling
 CONTROLLER_GEN_VERSION := v0.15.0
-CODEGEN_VERSION := v0.29.7
+CONTROLLER_GEN=$(GOBIN)/controller-gen
+CODEGEN_VERSION := v0.30.6
 OPERATOR_SDK_VERSION := v1.30.0
 KUSTOMIZE_VERSION := v4.5.4
 OPM_VERSION := v1.24.0
-LINTER_VERSION ?= v1.59.1
-GOVULNCHECK_VERSION ?= latest
-
+# Golang tooling
 LINTER ?= $(LOCALBIN)/golangci-lint
+DEADCODE ?= $(LOCALBIN)/deadcode
 GOVULNCHECK ?= $(LOCALBIN)/govulncheck
 GOIMPORT ?= $(LOCALBIN)/goimports
+LINTER_VERSION ?= v1.61.0
+GOVULNCHECK_VERSION ?= latest
+LINT_GOGC ?= 20
+LINT_DEADLINE ?= 10m
+DEBUG_MODE ?= false
 
+# Operator building configuration
 BASE_IMAGE := eclipse-temurin:17
 LOCAL_REPOSITORY := /etc/maven/m2
+OPENSHIFT_REGISTRY := image-registry.openshift-image-registry.svc:5000
 IMAGE_NAME ?= docker.io/apache/camel-k
 # Test for arm64, fall back to amd64
 IMAGE_ARCH ?= $(if $(filter arm64 aarch64,$(shell uname -m)),arm64,amd64)
@@ -60,10 +68,6 @@ METADATA_IMAGE_NAME := $(CUSTOM_IMAGE)-metadata
 BUNDLE_IMAGE_NAME ?= $(CUSTOM_IMAGE)-bundle
 RELEASE_GIT_REMOTE := origin
 GIT_COMMIT := $(shell if [ -d .git ]; then git rev-list -1 HEAD; else echo "$(CUSTOM_VERSION)"; fi)
-LINT_GOGC ?= 20
-LINT_DEADLINE ?= 10m
-DEBUG_MODE ?= false
-OPENSHIFT_REGISTRY := image-registry.openshift-image-registry.svc:5000
 
 # olm bundle vars
 MANAGER := pkg/resources/config/manager
@@ -217,10 +221,9 @@ generate: codegen-tools-install
 	./script/gen_doc.sh
 	cd pkg/apis/camel && $(CONTROLLER_GEN) paths="./..." object
 	cd addons/keda/duck && $(CONTROLLER_GEN) paths="./..." object
-	cd addons/strimzi/duck && $(CONTROLLER_GEN) paths="./..." object
-	./script/gen_client_strimzi.sh
+	./script/gen_helm.sh
 
-codegen-tools-install: controller-gen
+codegen-tools-install:
 	@# We must force the installation to make sure we are using the correct version
 	@# Note: as there is no --version in the tools, we cannot rely on cached local versions
 	@echo "Installing k8s.io/code-generator tools with version $(CODEGEN_VERSION)"
@@ -228,6 +231,7 @@ codegen-tools-install: controller-gen
 	go install k8s.io/code-generator/cmd/client-gen@$(CODEGEN_VERSION)
 	go install k8s.io/code-generator/cmd/lister-gen@$(CODEGEN_VERSION)
 	go install k8s.io/code-generator/cmd/informer-gen@$(CODEGEN_VERSION)
+	go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
 
 build: codegen build-resources test build-kamel build-compile-integration-tests
 
@@ -259,12 +263,6 @@ ifndef NOTEST
 else
 	@echo "####### Skipping unit test..."
 endif
-
-#
-# Setup the Knative test environment
-#
-setup-knative:
-	./e2e/knative/files/setup.sh
 
 #
 # Common tests that do not require any customized operator setting. They can leverage a unique namespaced operator installation to reduce
@@ -322,6 +320,14 @@ test-knative:
 	exit $${FAILED}
 
 #
+# Kafka tests that require the presence of Strimzi operator configuration
+#
+test-kafka:
+	FAILED=0; \
+	go test -timeout 20m -v ./e2e/kafka -tags=integration $(GOTESTFMT) || ((FAILED++)); \
+	exit $${FAILED}
+
+#
 # Telemetry tests that require the configuration of telemetry endpoints
 #
 test-telemetry:
@@ -340,7 +346,7 @@ build-kamel:
 	ln -sf build/_output/bin/kamel-$(IMAGE_ARCH) ./kamel
 
 build-kamel-platform:
-	# Perform only when running on OS other than linux
+# Perform only when running on OS other than linux
 ifneq ($(shell uname -s 2>/dev/null || echo Unknown),Linux)
 	@echo "####### Building platform specific kamel CLI for $(IMAGE_ARCH) architecture..."
 	CGO_ENABLED=0 GOARCH=$(IMAGE_ARCH) go build $(GOFLAGS) -o build/_output/bin/kamel-$(IMAGE_ARCH) ./cmd/kamel/*.go
@@ -352,9 +358,13 @@ build-resources:
 	./script/get_catalog.sh $(DEFAULT_RUNTIME_VERSION)
 
 build-compile-integration-tests:
+ifndef NOTEST
 	@echo "####### Compiling integration tests..."
 	export CAMEL_K_E2E_JUST_COMPILE="true"; \
 	go test -run nope -tags="integration" ./e2e/...
+else
+	@echo "####### Skipping integration tests compilation..."
+endif
 
 clean:
 	# disable gomodules when executing go clean:
@@ -408,6 +418,11 @@ vuln: govulncheck
 fmt: goimport
 	$(GOIMPORT) -l -w .
 	go fmt ./...
+
+dead-code:
+	GOBIN=$(LOCALBIN) go install golang.org/x/tools/cmd/deadcode@latest
+	GOGC=$(LINT_GOGC) $(DEADCODE) ./...
+
 
 dir-licenses:
 	./script/vendor-license-directory.sh
@@ -531,16 +546,7 @@ release-helm:
 	./script/release_helm.sh ${VERSION}
 
 .PHONY: do-build build build-kamel build-kamel-platform build-resources dep codegen images images-push images-push-staging image-build test check clean release cross-compile package-examples set-version git-tag check-licenses build-resources release-helm release-staging release-nightly get-staging-repo get-version
-.PHONY: controller-gen kubectl kustomize operator-sdk opm
-
-# find or download controller-gen if necessary
-controller-gen:
-ifeq (, $(shell command -v controller-gen 2> /dev/null))
-	go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
-CONTROLLER_GEN=$(GOBIN)/controller-gen
-else
-CONTROLLER_GEN=$(shell command -v controller-gen 2> /dev/null)
-endif
+.PHONY: kubectl kustomize operator-sdk opm
 
 kubectl:
 ifeq (, $(shell command -v kubectl 2> /dev/null))
@@ -548,12 +554,8 @@ ifeq (, $(shell command -v kubectl 2> /dev/null))
 endif
 
 kustomize:
-ifeq (, $(shell command -v kustomize 2> /dev/null))
 	go install sigs.k8s.io/kustomize/kustomize/v4@$(KUSTOMIZE_VERSION)
 KUSTOMIZE=$(GOBIN)/kustomize
-else
-KUSTOMIZE=$(shell command -v kustomize 2> /dev/null)
-endif
 
 operator-sdk: detect-os
 	@echo "####### Installing operator-sdk version $(OPERATOR_SDK_VERSION)..."
@@ -597,10 +599,8 @@ endif
 .PHONY: $(BUNDLE_CAMEL_APIS) pre-bundle bundle bundle-build
 
 # - Have to copy pkg/apis since it is a module in its own right
-# - The dependency of v1alpha1 api on v1 results in duplication
-#   of the v1 schema in those CRDs so need to split them up
 # - No way to add a licence header to the CRD other then post-script
-BUNDLE_CAMEL_APIS = v1 v1alpha1
+BUNDLE_CAMEL_APIS = v1
 
 $(BUNDLE_CAMEL_APIS): operator-sdk
 	@# Clean up api directory, copy over fresh version
@@ -699,21 +699,15 @@ $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 .PHONY: golangci-lint
-golangci-lint: $(LINTER)
-$(LINTER): $(LOCALBIN)
-	@test -s $(LOCALBIN)/golangci-lint || \
+golangci-lint:
 	GOBIN=$(LOCALBIN) go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(LINTER_VERSION)
 
 .PHONY: govulncheck
-govulncheck: $(GOVULNCHECK)
-$(GOVULNCHECK): $(LOCALBIN)
-	@test -s $(GOVULNCHECK) || \
+govulncheck:
 	GOBIN=$(LOCALBIN) go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
 .PHONY: goimport
-goimport: $(GOIMPORT)
-$(GOIMPORT): $(LOCALBIN)
-	@test -s $(LOCALBIN)/goimport || \
+goimport:
 	GOBIN=$(LOCALBIN) go install golang.org/x/tools/cmd/goimports@latest
 
 #####
@@ -739,7 +733,6 @@ ifdef OPERATOR_ID
 	@sed -i 's/value: .*/value: $(OPERATOR_ID)/' $(KUST_TMP)/$(KUSTOMIZE_DIR)/patch-operator-id.yaml
 	@echo "INFO: adding a suffix for ClusterRoleBindings $(OPERATOR_ID)"
 	cd $(KUST_TMP)/install/base/config/rbac/descoped && kustomize edit set namesuffix -- -$(OPERATOR_ID)
-	cd $(KUST_TMP)/install/base/config/rbac/openshift/descoped && kustomize edit set namesuffix -- -$(OPERATOR_ID)
 else
 	@echo "INFO: no operator ID variable \"OPERATOR_ID\" provided. Keeping default."
 endif
@@ -788,14 +781,6 @@ install-k8s-global: clone-kustomize-dir set-operator-id set-operator-env install
 install-k8s-ns: DEFAULT_NS="default"
 install-k8s-ns: KUSTOMIZE_DIR="install/overlays/kubernetes/namespaced"
 install-k8s-ns: clone-kustomize-dir set-operator-id set-operator-env install-operator install-registry
-
-install-openshift-global: DEFAULT_NS="camel-k"
-install-openshift-global: KUSTOMIZE_DIR="install/overlays/openshift/descoped"
-install-openshift-global: clone-kustomize-dir set-operator-id set-operator-env install-operator
-
-install-openshift-ns: DEFAULT_NS="default"
-install-openshift-ns: KUSTOMIZE_DIR="install/overlays/openshift/namespaced"
-install-openshift-ns: clone-kustomize-dir set-operator-id set-operator-env install-operator
 
 uninstall:
 ifdef NAMESPACE

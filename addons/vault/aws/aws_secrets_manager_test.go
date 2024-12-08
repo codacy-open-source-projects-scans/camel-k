@@ -22,7 +22,6 @@ import (
 
 	"github.com/apache/camel-k/v2/pkg/util/boolean"
 
-	"github.com/apache/camel-k/v2/pkg/util/test"
 	corev1 "k8s.io/api/core/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,7 +48,7 @@ func TestAwsSecretsManagerTraitApply(t *testing.T) {
 	ok, condition, err := secrets.Configure(e)
 	require.NoError(t, err)
 	assert.True(t, ok)
-	assert.Nil(t, condition)
+	assert.NotNil(t, condition)
 
 	err = secrets.Apply(e)
 	require.NoError(t, err)
@@ -72,7 +71,7 @@ func TestAwsSecretsManagerTraitNoDefaultCreds(t *testing.T) {
 	ok, condition, err := secrets.Configure(e)
 	require.NoError(t, err)
 	assert.True(t, ok)
-	assert.Nil(t, condition)
+	assert.NotNil(t, condition)
 
 	err = secrets.Apply(e)
 	require.NoError(t, err)
@@ -112,7 +111,7 @@ func TestAwsSecretsManagerTraitWithSecrets(t *testing.T) {
 	ok, condition, err := secrets.Configure(e)
 	require.NoError(t, err)
 	assert.True(t, ok)
-	assert.Nil(t, condition)
+	assert.NotNil(t, condition)
 
 	err = secrets.Apply(e)
 	require.NoError(t, err)
@@ -152,7 +151,7 @@ func TestAwsSecretsManagerTraitWithConfigMap(t *testing.T) {
 	ok, condition, err := secrets.Configure(e)
 	require.NoError(t, err)
 	assert.True(t, ok)
-	assert.Nil(t, condition)
+	assert.NotNil(t, condition)
 
 	err = secrets.Apply(e)
 	require.NoError(t, err)
@@ -168,7 +167,7 @@ func createEnvironment(t *testing.T, catalogGen func() (*camel.RuntimeCatalog, e
 	t.Helper()
 
 	catalog, err := catalogGen()
-	client, _ := test.NewFakeClient(objects...)
+	client, _ := newFakeClient(objects...)
 	require.NoError(t, err)
 
 	e := trait.Environment{

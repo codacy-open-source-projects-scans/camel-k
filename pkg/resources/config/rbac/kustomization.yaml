@@ -27,18 +27,7 @@ resources:
 - operator-cluster-role-binding-custom-resource-definitions.yaml
 - operator-cluster-role-addressable-resolver.yaml
 - operator-cluster-role-binding-addressable-resolver.yaml
-- operator-cluster-role-local-registry.yaml
-- operator-role-binding-local-registry.yaml
-
-
-transformers:
-- |-
-  apiVersion: builtin
-  kind: PatchTransformer
-  metadata:
-    name: fix-local-registry-rbac-namespace
-  patch: '[{"op": "replace", "path": "/metadata/namespace", "value": "kube-public"}]'
-  target:
-    group: rbac.authorization.k8s.io
-    kind: RoleBinding
-    name: camel-k-operator-local-registry
+- builder-role.yaml
+- builder-role-openshift.yaml
+- builder-role-binding.yaml
+- builder-role-binding-openshift.yaml

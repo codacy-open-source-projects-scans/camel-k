@@ -28,9 +28,9 @@ import (
 	"testing"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
+	"github.com/apache/camel-k/v2/pkg/internal"
 	"github.com/apache/camel-k/v2/pkg/util/boolean"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
-	"github.com/apache/camel-k/v2/pkg/util/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -99,7 +99,7 @@ spec:
 }
 
 func TestPrepareKameletsPermissions(t *testing.T) {
-	c, err := test.NewFakeClient()
+	c, err := internal.NewFakeClient()
 	assert.NoError(t, err)
 	err = prepareKameletsPermissions(context.TODO(), c, "camel-k")
 	assert.NoError(t, err)
@@ -112,6 +112,7 @@ func TestPrepareKameletsDirectory(t *testing.T) {
 }
 
 func TestDownloadKameletDependencyAndExtract(t *testing.T) {
+	itp := v1.NewIntegrationPlatform("itp-ns", "my-itp")
 	// use local Maven executable in tests
 	t.Setenv("MAVEN_WRAPPER", boolean.FalseString)
 	_, ok := os.LookupEnv("MAVEN_CMD")
@@ -126,7 +127,7 @@ func TestDownloadKameletDependencyAndExtract(t *testing.T) {
 	assert.NoError(t, err)
 	camelVersion := c.Runtime.Metadata["camel.version"]
 	assert.NotEqual(t, "", camelVersion)
-	err = downloadKameletDependency(context.TODO(), camelVersion, tmpDir)
+	err = downloadKameletDependency(context.TODO(), &itp, camelVersion, tmpDir)
 	assert.NoError(t, err)
 	downloadedDependency, err := os.Stat(path.Join(tmpDir, fmt.Sprintf("camel-kamelets-%s.jar", camelVersion)))
 	assert.NoError(t, err)

@@ -30,8 +30,8 @@ import (
 
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
 	"github.com/apache/camel-k/v2/pkg/util/log"
-	"github.com/apache/camel-k/v2/pkg/util/test"
 
+	"github.com/apache/camel-k/v2/pkg/internal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,7 +48,7 @@ func TestNewPipeError(t *testing.T) {
 			Name:      "my-pipe",
 		},
 	}
-	c, err := test.NewFakeClient(pipe)
+	c, err := internal.NewFakeClient(pipe)
 	require.NoError(t, err)
 
 	a := NewInitializeAction()
@@ -67,7 +67,7 @@ func TestNewPipeError(t *testing.T) {
 	assert.Equal(t, "no ref or URI specified in endpoint", cond.Message)
 }
 
-func TestNewPipeWithComponentsCreating(t *testing.T) {
+func TestNewPipeCamelURIBinding(t *testing.T) {
 	pipe := &v1.Pipe{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: v1.SchemeGroupVersion.String(),
@@ -86,7 +86,7 @@ func TestNewPipeWithComponentsCreating(t *testing.T) {
 			},
 		},
 	}
-	c, err := test.NewFakeClient(pipe)
+	c, err := internal.NewFakeClient(pipe)
 	require.NoError(t, err)
 
 	a := NewInitializeAction()
@@ -114,7 +114,7 @@ func TestNewPipeWithComponentsCreating(t *testing.T) {
 	assert.Equal(t, "", pipe.Annotations[v1.AnnotationIcon])
 }
 
-func TestNewPipeWithKameletsCreating(t *testing.T) {
+func TestNewPipe(t *testing.T) {
 	source := v1.NewKamelet("ns", "my-source")
 	source.Annotations = map[string]string{
 		v1.AnnotationIcon: "my-source-icon-base64",
@@ -187,7 +187,7 @@ func TestNewPipeWithKameletsCreating(t *testing.T) {
 			},
 		},
 	}
-	c, err := test.NewFakeClient(pipe, &source, &sink)
+	c, err := internal.NewFakeClient(pipe, &source, &sink)
 	require.NoError(t, err)
 
 	a := NewInitializeAction()
@@ -264,7 +264,7 @@ func TestNewPipeUnsupportedRef(t *testing.T) {
 			},
 		},
 	}
-	c, err := test.NewFakeClient(pipe)
+	c, err := internal.NewFakeClient(pipe)
 	require.NoError(t, err)
 
 	a := NewInitializeAction()
@@ -275,12 +275,222 @@ func TestNewPipeUnsupportedRef(t *testing.T) {
 	handledPipe, err := a.Handle(context.TODO(), pipe)
 	require.Error(t, err)
 	assert.Equal(t, "could not find any suitable binding provider for v1/Service my-svc in namespace ns. "+
-		"Bindings available: [\"kamelet\" \"knative-uri\" \"camel-uri\" \"knative-ref\"]", err.Error())
+		"Bindings available: [\"kamelet\" \"knative-uri\" \"strimzi\" \"camel-uri\" \"knative-ref\"]", err.Error())
 	assert.Equal(t, v1.PipePhaseError, handledPipe.Status.Phase)
 	cond := handledPipe.Status.GetCondition(v1.PipeConditionReady)
 	assert.NotNil(t, cond)
 	assert.Equal(t, corev1.ConditionFalse, cond.Status)
 	assert.Equal(t, "IntegrationError", cond.Reason)
 	assert.Equal(t, "could not find any suitable binding provider for v1/Service my-svc in namespace ns. "+
-		"Bindings available: [\"kamelet\" \"knative-uri\" \"camel-uri\" \"knative-ref\"]", cond.Message)
+		"Bindings available: [\"kamelet\" \"knative-uri\" \"strimzi\" \"camel-uri\" \"knative-ref\"]", cond.Message)
+}
+
+func TestNewPipeKnativeURIBinding(t *testing.T) {
+	pipe := &v1.Pipe{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: v1.SchemeGroupVersion.String(),
+			Kind:       v1.PipeKind,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "ns",
+			Name:      "my-pipe",
+		},
+		Spec: v1.PipeSpec{
+			Sink: v1.Endpoint{
+				URI: ptr.To("http://my-knative-uri/"),
+			},
+			Source: v1.Endpoint{
+				URI: ptr.To("direct:something"),
+			},
+		},
+	}
+	c, err := internal.NewFakeClient(pipe)
+	require.NoError(t, err)
+
+	a := NewInitializeAction()
+	a.InjectLogger(log.Log)
+	a.InjectClient(c)
+	assert.Equal(t, "initialize", a.Name())
+	assert.True(t, a.CanHandle(pipe))
+	handledPipe, err := a.Handle(context.TODO(), pipe)
+	require.NoError(t, err)
+	assert.Equal(t, v1.PipePhaseCreating, handledPipe.Status.Phase)
+	// Check integration which should have been created
+	expectedIT := v1.NewIntegration(pipe.Namespace, pipe.Name)
+	err = c.Get(context.Background(), ctrl.ObjectKeyFromObject(&expectedIT), &expectedIT)
+	require.NoError(t, err)
+	assert.Equal(t, pipe.Name, expectedIT.Name)
+	assert.Equal(t, v1.IntegrationPhaseNone, expectedIT.Status.Phase)
+	assert.Equal(t, "Pipe", expectedIT.Labels[kubernetes.CamelCreatorLabelKind])
+	assert.Equal(t, "my-pipe", expectedIT.Labels[kubernetes.CamelCreatorLabelName])
+	flow, err := json.Marshal(expectedIT.Spec.Flows[0].RawMessage)
+	require.NoError(t, err)
+	assert.Equal(t, "{\"route\":{\"from\":{\"steps\":[{\"to\":\"knative:endpoint/sink\"}],\"uri\":\"direct:something\"},\"id\":\"binding\"}}", string(flow))
+	assert.Equal(t,
+		"{\"services\":[{\"type\":\"endpoint\",\"name\":\"sink\",\"url\":\"http://my-knative-uri/\","+
+			"\"metadata\":{\"camel.endpoint.kind\":\"sink\",\"knative.apiVersion\":\"\",\"knative.kind\":\"\",\"knative.name\":\"sink\"}}]}",
+		expectedIT.Spec.Traits.Knative.Configuration,
+	)
+	assert.Equal(t, false, *expectedIT.Spec.Traits.Knative.SinkBinding)
+}
+
+func TestNewPipeKnativeRefBinding(t *testing.T) {
+	pipe := &v1.Pipe{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: v1.SchemeGroupVersion.String(),
+			Kind:       v1.PipeKind,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "ns",
+			Name:      "my-pipe",
+		},
+		Spec: v1.PipeSpec{
+			Sink: v1.Endpoint{
+				Ref: &corev1.ObjectReference{
+					Kind:       "Broker",
+					Name:       "default",
+					APIVersion: "eventing.knative.dev/v1",
+				},
+			},
+			Source: v1.Endpoint{
+				URI: ptr.To("direct:something"),
+			},
+		},
+	}
+	c, err := internal.NewFakeClient(pipe)
+	require.NoError(t, err)
+
+	a := NewInitializeAction()
+	a.InjectLogger(log.Log)
+	a.InjectClient(c)
+	assert.Equal(t, "initialize", a.Name())
+	assert.True(t, a.CanHandle(pipe))
+	handledPipe, err := a.Handle(context.TODO(), pipe)
+	require.NoError(t, err)
+	assert.Equal(t, v1.PipePhaseCreating, handledPipe.Status.Phase)
+	// Check integration which should have been created
+	expectedIT := v1.NewIntegration(pipe.Namespace, pipe.Name)
+	err = c.Get(context.Background(), ctrl.ObjectKeyFromObject(&expectedIT), &expectedIT)
+	require.NoError(t, err)
+	assert.Equal(t, pipe.Name, expectedIT.Name)
+	assert.Equal(t, v1.IntegrationPhaseNone, expectedIT.Status.Phase)
+	assert.Equal(t, "Pipe", expectedIT.Labels[kubernetes.CamelCreatorLabelKind])
+	assert.Equal(t, "my-pipe", expectedIT.Labels[kubernetes.CamelCreatorLabelName])
+	flow, err := json.Marshal(expectedIT.Spec.Flows[0].RawMessage)
+	require.NoError(t, err)
+	assert.Equal(t, "{\"route\":{\"from\":{\"steps\":[{\"to\":\"knative:event?apiVersion=eventing.knative.dev%2Fv1\\u0026kind=Broker\\u0026name=default\"}],"+
+		"\"uri\":\"direct:something\"},\"id\":\"binding\"}}", string(flow))
+}
+
+func TestNewPipeStrimziKafkaTopicBinding(t *testing.T) {
+	pipe := &v1.Pipe{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: v1.SchemeGroupVersion.String(),
+			Kind:       v1.PipeKind,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "ns",
+			Name:      "my-pipe",
+		},
+		Spec: v1.PipeSpec{
+			Sink: v1.Endpoint{
+				Ref: &corev1.ObjectReference{
+					Kind:       "KafkaTopic",
+					Name:       "mytopic",
+					APIVersion: "kafka.strimzi.io/v1beta2",
+				},
+				Properties: asEndpointProperties(map[string]string{
+					"brokers": "my-cluster-kafka-bootstrap:9092",
+				}),
+			},
+			Source: v1.Endpoint{
+				URI: ptr.To("direct:something"),
+			},
+		},
+	}
+	c, err := internal.NewFakeClient(pipe)
+	require.NoError(t, err)
+
+	a := NewInitializeAction()
+	a.InjectLogger(log.Log)
+	a.InjectClient(c)
+	assert.Equal(t, "initialize", a.Name())
+	assert.True(t, a.CanHandle(pipe))
+	handledPipe, err := a.Handle(context.TODO(), pipe)
+	require.NoError(t, err)
+	assert.Equal(t, v1.PipePhaseCreating, handledPipe.Status.Phase)
+	// Check integration which should have been created
+	expectedIT := v1.NewIntegration(pipe.Namespace, pipe.Name)
+	err = c.Get(context.Background(), ctrl.ObjectKeyFromObject(&expectedIT), &expectedIT)
+	require.NoError(t, err)
+	assert.Equal(t, pipe.Name, expectedIT.Name)
+	assert.Equal(t, v1.IntegrationPhaseNone, expectedIT.Status.Phase)
+	assert.Equal(t, "Pipe", expectedIT.Labels[kubernetes.CamelCreatorLabelKind])
+	assert.Equal(t, "my-pipe", expectedIT.Labels[kubernetes.CamelCreatorLabelName])
+	flow, err := json.Marshal(expectedIT.Spec.Flows[0].RawMessage)
+	require.NoError(t, err)
+	assert.Equal(t, "{\"route\":{\"from\":{\"steps\":[{\"to\":\"kafka:mytopic?brokers=my-cluster-kafka-bootstrap%3A9092\"}],"+
+		"\"uri\":\"direct:something\"},\"id\":\"binding\"}}", string(flow))
+}
+
+func TestNewPipeStrimziKafkaBinding(t *testing.T) {
+	pipe := &v1.Pipe{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: v1.SchemeGroupVersion.String(),
+			Kind:       v1.PipeKind,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "ns",
+			Name:      "my-pipe",
+		},
+		Spec: v1.PipeSpec{
+			Sink: v1.Endpoint{
+				Ref: &corev1.ObjectReference{
+					Kind:       "Kafka",
+					Name:       "my-kafka",
+					APIVersion: "kafka.strimzi.io/v1beta2",
+				},
+				Properties: asEndpointProperties(map[string]string{
+					"topic":   "mytopic",
+					"brokers": "my-cluster-kafka-bootstrap:9092",
+				}),
+			},
+			Source: v1.Endpoint{
+				URI: ptr.To("direct:something"),
+			},
+		},
+	}
+	c, err := internal.NewFakeClient(pipe)
+	require.NoError(t, err)
+
+	a := NewInitializeAction()
+	a.InjectLogger(log.Log)
+	a.InjectClient(c)
+	assert.Equal(t, "initialize", a.Name())
+	assert.True(t, a.CanHandle(pipe))
+	handledPipe, err := a.Handle(context.TODO(), pipe)
+	require.NoError(t, err)
+	assert.Equal(t, v1.PipePhaseCreating, handledPipe.Status.Phase)
+	// Check integration which should have been created
+	expectedIT := v1.NewIntegration(pipe.Namespace, pipe.Name)
+	err = c.Get(context.Background(), ctrl.ObjectKeyFromObject(&expectedIT), &expectedIT)
+	require.NoError(t, err)
+	assert.Equal(t, pipe.Name, expectedIT.Name)
+	assert.Equal(t, v1.IntegrationPhaseNone, expectedIT.Status.Phase)
+	assert.Equal(t, "Pipe", expectedIT.Labels[kubernetes.CamelCreatorLabelKind])
+	assert.Equal(t, "my-pipe", expectedIT.Labels[kubernetes.CamelCreatorLabelName])
+	flow, err := json.Marshal(expectedIT.Spec.Flows[0].RawMessage)
+	require.NoError(t, err)
+	assert.Equal(t, "{\"route\":{\"from\":{\"steps\":[{\"to\":\"kafka:mytopic?brokers=my-cluster-kafka-bootstrap%3A9092\"}],"+
+		"\"uri\":\"direct:something\"},\"id\":\"binding\"}}", string(flow))
+}
+
+func asEndpointProperties(props map[string]string) *v1.EndpointProperties {
+	serialized, err := json.Marshal(props)
+	if err != nil {
+		panic(err)
+	}
+	return &v1.EndpointProperties{
+		RawMessage: serialized,
+	}
 }

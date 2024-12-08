@@ -25,7 +25,6 @@ import (
 	"github.com/apache/camel-k/v2/pkg/trait"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
-	"github.com/apache/camel-k/v2/pkg/util/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -37,7 +36,7 @@ func TestMasterOn(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, err := test.NewFakeClient()
+	client, err := newFakeClient()
 	require.NoError(t, err)
 	traitCatalog := trait.NewCatalog(nil)
 
@@ -71,7 +70,7 @@ func TestMasterOn(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -128,7 +127,7 @@ func TestMasterOff(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, err := test.NewFakeClient()
+	client, err := newFakeClient()
 	require.NoError(t, err)
 	traitCatalog := trait.NewCatalog(nil)
 
@@ -162,7 +161,7 @@ func TestMasterOff(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -191,7 +190,7 @@ func TestMasterAuto(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, err := test.NewFakeClient()
+	client, err := newFakeClient()
 	require.NoError(t, err)
 	traitCatalog := trait.NewCatalog(nil)
 
@@ -224,7 +223,7 @@ func TestMasterAuto(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},

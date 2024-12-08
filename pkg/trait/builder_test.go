@@ -29,15 +29,15 @@ import (
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	"github.com/apache/camel-k/v2/pkg/internal"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
 	"github.com/apache/camel-k/v2/pkg/util/defaults"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
-	"github.com/apache/camel-k/v2/pkg/util/test"
 )
 
 func TestBuilderTraitNotAppliedBecauseOfNilKit(t *testing.T) {
 	environments := []*Environment{
-		createBuilderTestEnv(v1.IntegrationPlatformClusterOpenShift, v1.IntegrationPlatformBuildPublishStrategyS2I, v1.BuildStrategyRoutine),
+		createBuilderTestEnv(v1.IntegrationPlatformClusterOpenShift, v1.IntegrationPlatformBuildPublishStrategyJib, v1.BuildStrategyRoutine),
 	}
 
 	for _, e := range environments {
@@ -59,7 +59,7 @@ func TestBuilderTraitNotAppliedBecauseOfNilKit(t *testing.T) {
 
 func TestBuilderTraitNotAppliedBecauseOfNilPhase(t *testing.T) {
 	environments := []*Environment{
-		createBuilderTestEnv(v1.IntegrationPlatformClusterOpenShift, v1.IntegrationPlatformBuildPublishStrategyS2I, v1.BuildStrategyRoutine),
+		createBuilderTestEnv(v1.IntegrationPlatformClusterOpenShift, v1.IntegrationPlatformBuildPublishStrategyJib, v1.BuildStrategyRoutine),
 	}
 
 	for _, e := range environments {
@@ -77,24 +77,6 @@ func TestBuilderTraitNotAppliedBecauseOfNilPhase(t *testing.T) {
 			assert.Empty(t, e.Pipeline)
 		})
 	}
-}
-
-func TestS2IBuilderTrait(t *testing.T) {
-	env := createBuilderTestEnv(v1.IntegrationPlatformClusterOpenShift, v1.IntegrationPlatformBuildPublishStrategyS2I, v1.BuildStrategyRoutine)
-	conditions, traits, err := NewBuilderTestCatalog().apply(env)
-
-	require.NoError(t, err)
-	assert.Empty(t, traits)
-	assert.NotEmpty(t, conditions)
-	assert.NotEmpty(t, env.ExecutedTraits)
-	assert.NotNil(t, env.GetTrait("builder"))
-	assert.NotEmpty(t, env.Pipeline)
-	assert.Len(t, env.Pipeline, 3)
-	assert.NotNil(t, env.Pipeline[0].Builder)
-	assert.NotNil(t, env.Pipeline[1].Package)
-	assert.NotNil(t, env.Pipeline[2].S2i)
-	assert.Equal(t, "root-jdk-image", env.Pipeline[2].S2i.BaseImage)
-	assert.Empty(t, env.Pipeline[2].S2i.Registry)
 }
 
 func TestJibBuilderTrait(t *testing.T) {
@@ -129,7 +111,7 @@ func createBuilderTestEnv(cluster v1.IntegrationPlatformCluster, strategy v1.Int
 			Name:      "my-kit",
 		},
 	}
-	client, _ := test.NewFakeClient(itk)
+	client, _ := internal.NewFakeClient(itk)
 	res := &Environment{
 		Ctx:          context.TODO(),
 		CamelCatalog: c,
@@ -178,7 +160,7 @@ func NewBuilderTestCatalog() *Catalog {
 }
 
 func TestMavenPropertyBuilderTrait(t *testing.T) {
-	env := createBuilderTestEnv(v1.IntegrationPlatformClusterKubernetes, v1.IntegrationPlatformBuildPublishStrategyS2I, v1.BuildStrategyRoutine)
+	env := createBuilderTestEnv(v1.IntegrationPlatformClusterKubernetes, v1.IntegrationPlatformBuildPublishStrategyJib, v1.BuildStrategyRoutine)
 	builderTrait := createNominalBuilderTraitTest()
 	builderTrait.Properties = append(builderTrait.Properties, "build-time-prop1=build-time-value1")
 
@@ -264,7 +246,7 @@ func TestCustomTaskBuilderTraitInvalidStrategyOverride(t *testing.T) {
 }
 
 func TestMavenProfilesBuilderTrait(t *testing.T) {
-	env := createBuilderTestEnv(v1.IntegrationPlatformClusterKubernetes, v1.IntegrationPlatformBuildPublishStrategyS2I, v1.BuildStrategyRoutine)
+	env := createBuilderTestEnv(v1.IntegrationPlatformClusterKubernetes, v1.IntegrationPlatformBuildPublishStrategyJib, v1.BuildStrategyRoutine)
 	builderTrait := createNominalBuilderTraitTest()
 	builderTrait.MavenProfiles = []string{"configmap:maven-profile/owasp-profile.xml", "secret:maven-profile-secret"}
 
@@ -291,7 +273,7 @@ func TestMavenProfilesBuilderTrait(t *testing.T) {
 }
 
 func TestInvalidMavenProfilesBuilderTrait(t *testing.T) {
-	env := createBuilderTestEnv(v1.IntegrationPlatformClusterKubernetes, v1.IntegrationPlatformBuildPublishStrategyS2I, v1.BuildStrategyRoutine)
+	env := createBuilderTestEnv(v1.IntegrationPlatformClusterKubernetes, v1.IntegrationPlatformBuildPublishStrategyJib, v1.BuildStrategyRoutine)
 	builderTrait := createNominalBuilderTraitTest()
 	builderTrait.MavenProfiles = []string{"fakeprofile"}
 

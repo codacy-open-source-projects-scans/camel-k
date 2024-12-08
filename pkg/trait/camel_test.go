@@ -30,8 +30,8 @@ import (
 	"github.com/apache/camel-k/v2/pkg/util/boolean"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
-	"github.com/apache/camel-k/v2/pkg/util/test"
 
+	"github.com/apache/camel-k/v2/pkg/internal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -81,7 +81,7 @@ func TestApplyCamelTraitNonManagedBuild(t *testing.T) {
 		"Camel",
 		v1.IntegrationConditionTraitInfo,
 		corev1.ConditionTrue,
-		traitConfigurationReason,
+		TraitConfigurationReason,
 		fmt.Sprintf(
 			"Operated with CamelCatalog version %s which may be different from the runtime used in the container",
 			"0.0.1",
@@ -114,7 +114,7 @@ func TestApplyCamelTraitWithoutEnvironmentCatalogAndUnmatchableVersionFails(t *t
 }
 
 func createNominalCamelTest(withSources bool) (*camelTrait, *Environment) {
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 
 	trait, _ := newCamelTrait().(*camelTrait)
 	var sources []v1.SourceSpec
@@ -243,7 +243,7 @@ func TestApplyCamelTraitNonManagedBuildWithProperties(t *testing.T) {
 		"Camel",
 		v1.IntegrationConditionTraitInfo,
 		corev1.ConditionTrue,
-		traitConfigurationReason,
+		TraitConfigurationReason,
 		fmt.Sprintf(
 			"Operated with CamelCatalog version %s which may be different from the runtime used in the container",
 			"0.0.1",

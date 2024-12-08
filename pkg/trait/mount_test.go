@@ -31,11 +31,11 @@ import (
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	"github.com/apache/camel-k/v2/pkg/internal"
 	"github.com/apache/camel-k/v2/pkg/util/boolean"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
 	"github.com/apache/camel-k/v2/pkg/util/gzip"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
-	"github.com/apache/camel-k/v2/pkg/util/test"
 )
 
 func TestMountVolumesEmpty(t *testing.T) {
@@ -244,7 +244,7 @@ func getNominalEnv(t *testing.T, traitCatalog *Catalog) *Environment {
 			Name:      "my-pvc",
 		},
 	}
-	fakeClient, _ := test.NewFakeClient(&pvc)
+	fakeClient, _ := internal.NewFakeClient(&pvc)
 	catalog, _ := camel.DefaultCatalog()
 	compressedRoute, _ := gzip.CompressBase64([]byte(`from("platform-http:test").log("hello")`))
 
@@ -290,7 +290,7 @@ func getNominalEnv(t *testing.T, traitCatalog *Catalog) *Environment {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -357,7 +357,7 @@ func TestMountVolumesCreateDefaultStorageClass(t *testing.T) {
 			},
 		},
 	}
-	fakeClient, _ := test.NewFakeClient(&sc)
+	fakeClient, _ := internal.NewFakeClient(&sc)
 	e.Client = fakeClient
 	// Default storage class
 	vol, vm, err := ParseAndCreateVolume(e, "my-pvc:/tmp/my-pvc:10Mi:ReadOnly")
@@ -383,7 +383,7 @@ func TestMountVolumesCreateUserStorageClass(t *testing.T) {
 			Name:      "my-sc",
 		},
 	}
-	fakeClient, _ := test.NewFakeClient(&sc)
+	fakeClient, _ := internal.NewFakeClient(&sc)
 	e.Client = fakeClient
 	// Default storage class
 	vol, vm, err := ParseAndCreateVolume(e, "my-pvc:/tmp/my-pvc:10Mi:ReadOnly:my-sc")

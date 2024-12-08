@@ -34,11 +34,12 @@ import (
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	"github.com/apache/camel-k/v2/pkg/internal"
 	"github.com/apache/camel-k/v2/pkg/util/boolean"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
+	"github.com/apache/camel-k/v2/pkg/util/envvar"
 	"github.com/apache/camel-k/v2/pkg/util/gzip"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
-	"github.com/apache/camel-k/v2/pkg/util/test"
 )
 
 const (
@@ -50,7 +51,7 @@ func TestKnativeService(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	compressedRoute, err := gzip.CompressBase64([]byte(`from("platform-http:test").log("hello")`))
@@ -108,7 +109,7 @@ func TestKnativeService(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -185,15 +186,24 @@ func TestKnativeService(t *testing.T) {
 	assert.Equal(t, "file:/etc/camel/sources/routes.js", environment.ApplicationProperties["camel.k.sources[0].location"])
 	assert.Equal(t, "js", environment.ApplicationProperties["camel.k.sources[0].language"])
 	assert.Equal(t, boolean.TrueString, environment.ApplicationProperties["camel.k.sources[0].compressed"])
-	test.EnvVarHasValue(t, spec.Containers[0].Env, "CAMEL_K_CONF", filepath.FromSlash("/etc/camel/application.properties"))
-	test.EnvVarHasValue(t, spec.Containers[0].Env, "CAMEL_K_CONF_D", filepath.FromSlash("/etc/camel/conf.d"))
+	envVarHasValue(t, spec.Containers[0].Env, "CAMEL_K_CONF", filepath.FromSlash("/etc/camel/application.properties"))
+	envVarHasValue(t, spec.Containers[0].Env, "CAMEL_K_CONF_D", filepath.FromSlash("/etc/camel/conf.d"))
+}
+
+// envVarHasValue --.
+func envVarHasValue(t *testing.T, env []corev1.EnvVar, name string, val string) {
+	t.Helper()
+
+	ev := envvar.Get(env, name)
+	assert.NotNil(t, ev)
+	assert.Equal(t, val, ev.Value)
 }
 
 func TestKnativeServiceWithCustomContainerName(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	environment := Environment{
@@ -236,7 +246,7 @@ func TestKnativeServiceWithCustomContainerName(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -277,7 +287,7 @@ func TestKnativeServiceWithRest(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	environment := Environment{
@@ -321,7 +331,7 @@ func TestKnativeServiceWithRest(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -352,7 +362,7 @@ func TestKnativeServiceNotApplicable(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	environment := Environment{
@@ -389,7 +399,7 @@ func TestKnativeServiceNotApplicable(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -424,8 +434,8 @@ func TestKnativeServiceNoServingAvailable(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
-	fakeClient := client.(*test.FakeClient) //nolint
+	client, _ := internal.NewFakeClient()
+	fakeClient := client.(*internal.FakeClient) //nolint
 	fakeClient.DisableKnativeServing()
 
 	traitCatalog := NewCatalog(nil)
@@ -464,7 +474,7 @@ func TestKnativeServiceNoServingAvailable(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -545,7 +555,7 @@ func createKnativeServiceTestEnvironment(t *testing.T, trait *traitv1.KnativeSer
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	environment := &Environment{
@@ -635,7 +645,7 @@ func TestKnativeServiceAuto(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	compressedRoute, err := gzip.CompressBase64([]byte(`from("platform-http:test").log("hello")`))
@@ -676,7 +686,7 @@ func TestKnativeServiceAuto(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},

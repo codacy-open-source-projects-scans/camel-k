@@ -172,8 +172,7 @@ func writeTitle(traitID string, content *[]string) {
 	*content = res
 }
 
-// Write badges
-// https://shields.io/badges/static-badge
+// write badges.
 func writeBadges(t *types.Type, content *[]string) {
 	pre, post := split(*content, adocBadgesMarkerStart, adocBadgesMarkerEnd)
 	// When there are no badges in the generated output already
@@ -185,7 +184,8 @@ func writeBadges(t *types.Type, content *[]string) {
 	res := append([]string(nil), pre...)
 	res = append(res, adocBadgesMarkerStart)
 	if ver := getDeprecatedVersion(t); ver != "" {
-		res = append(res, "image:https://img.shields.io/badge/"+ver+"-white?label=Deprecated&labelColor=C40C0C&color=gray[Deprecated Badge]")
+		res = append(res, "[.badges]")
+		res = append(res, "[.badge-key]##Deprecated since##[.badge-unsupported]##"+ver+"##")
 	}
 	res = append(res, adocBadgesMarkerEnd)
 	res = append(res, post...)
@@ -330,14 +330,14 @@ func writeFile(file *os.File, content []string) error {
 	if err := file.Truncate(0); err != nil {
 		return err
 	}
-	max := 0
+	mx := 0
 	for i, line := range content {
 		if line != "" {
-			max = i
+			mx = i
 		}
 	}
 	for i, line := range content {
-		if i <= max {
+		if i <= mx {
 			if _, err := file.WriteString(line + "\n"); err != nil {
 				return err
 			}

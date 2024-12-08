@@ -1,0 +1,546 @@
+# ---------------------------------------------------------------------------
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ---------------------------------------------------------------------------
+{{- if eq .Values.operator.global "false" }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator
+rules:
+- apiGroups:
+  - camel.apache.org
+  resources:
+  - builds
+  - camelcatalogs
+  - integrationkits
+  - integrationplatforms
+  - integrationprofiles
+  - integrations
+  - pipes
+  - kamelets
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - camel.apache.org
+  resources:
+  - builds
+  - integrations
+  verbs:
+  - delete
+- apiGroups:
+  - camel.apache.org
+  resources:
+  - builds/status
+  - camelcatalogs/status
+  - integrationkits/status
+  - integrationplatforms/status
+  - integrationprofiles/status
+  - integrations/scale
+  - integrations/status
+  - pipes/status
+  - pipes/scale
+  - kamelets/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - services
+  - endpoints
+  - persistentvolumeclaims
+  - configmaps
+  - secrets
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods/exec
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - pods/proxy
+  - pods/log
+  verbs:
+  - get
+- apiGroups:
+  - policy
+  resources:
+  - poddisruptionbudgets
+  verbs:
+  - create
+  - delete
+  - get
+  - update
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - roles
+  - rolebindings
+  - clusterrolebindings
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - storageclasses
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator-events
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator-keda
+rules:
+- apiGroups:
+  - keda.sh
+  resources:
+  - scaledobjects
+  - triggerauthentications
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator-knative
+rules:
+- apiGroups:
+  - serving.knative.dev
+  resources:
+  - services
+  - routes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - eventing.knative.dev
+  resources:
+  - triggers
+  - brokers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+- apiGroups:
+  - messaging.knative.dev
+  resources:
+  - subscriptions
+  - channels
+  - inmemorychannels
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+- apiGroups:
+  - sources.knative.dev
+  resources:
+  - sinkbindings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator-leases
+rules:
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator-openshift
+rules:
+- apiGroups:
+  - camel.apache.org
+  resources:
+  - builds/finalizers
+  - integrationkits/finalizers
+  - integrationplatforms/finalizers
+  - integrationprofiles/finalizers
+  - integrations/finalizers
+  - pipes/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - ""
+  - build.openshift.io
+  resources:
+  - buildconfigs
+  - buildconfigs/webhooks
+  - builds
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  - image.openshift.io
+  resources:
+  - imagestreamimages
+  - imagestreammappings
+  - imagestreams
+  - imagestreams/secrets
+  - imagestreamtags
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  - build.openshift.io
+  resources:
+  - buildconfigs/instantiate
+  - buildconfigs/instantiatebinary
+  - builds/clone
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  - route.openshift.io
+  resources:
+  - routes
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  - route.openshift.io
+  resources:
+  - routes/custom-host
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator-podmonitors
+rules:
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - podmonitors
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator-strimzi
+rules:
+- apiGroups:
+  - kafka.strimzi.io
+  resources:
+  - kafkatopics
+  - kafkatopics/status
+  - kafkas
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: camel-k-operator
+subjects:
+- kind: ServiceAccount
+  name: camel-k-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator-events
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: camel-k-operator-events
+subjects:
+- kind: ServiceAccount
+  name: camel-k-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator-keda
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: camel-k-operator-keda
+subjects:
+- kind: ServiceAccount
+  name: camel-k-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator-knative
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: camel-k-operator-knative
+subjects:
+- kind: ServiceAccount
+  name: camel-k-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator-leases
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: camel-k-operator-leases
+subjects:
+- kind: ServiceAccount
+  name: camel-k-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator-openshift
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: camel-k-operator-openshift
+subjects:
+- kind: ServiceAccount
+  name: camel-k-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator-podmonitors
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: camel-k-operator-podmonitors
+subjects:
+- kind: ServiceAccount
+  name: camel-k-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app: camel-k
+  name: camel-k-operator-strimzi
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: camel-k-operator-strimzi
+subjects:
+- kind: ServiceAccount
+  name: camel-k-operator
+{{- end }}

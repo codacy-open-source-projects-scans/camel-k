@@ -30,10 +30,10 @@ import (
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	"github.com/apache/camel-k/v2/pkg/internal"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
 	"github.com/apache/camel-k/v2/pkg/util/gzip"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
-	"github.com/apache/camel-k/v2/pkg/util/test"
 )
 
 const (
@@ -45,7 +45,7 @@ func TestServiceWithDefaults(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	compressedRoute, err := gzip.CompressBase64([]byte(`from("netty-http:test").log("hello")`))
@@ -94,7 +94,7 @@ func TestServiceWithDefaults(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -144,7 +144,7 @@ func TestService(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	compressedRoute, err := gzip.CompressBase64([]byte(`from("netty-http:test").log("hello")`))
@@ -201,7 +201,7 @@ func TestService(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -249,7 +249,7 @@ func TestServiceWithCustomContainerName(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	environment := Environment{
@@ -288,7 +288,7 @@ func TestServiceWithCustomContainerName(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -328,7 +328,7 @@ func TestServiceWithNodePort(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	compressedRoute, err := gzip.CompressBase64([]byte(`from("netty-http:test").log("hello")`))
@@ -379,7 +379,7 @@ func TestServiceWithNodePort(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -424,7 +424,7 @@ func TestServiceWithKnativeServiceEnabled(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	compressedRoute, err := gzip.CompressBase64([]byte(`from("netty-http:test").log("hello")`))
@@ -474,7 +474,7 @@ func TestServiceWithKnativeServiceEnabled(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -518,7 +518,7 @@ func TestServicesWithKnativeProfile(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	compressedRoute, err := gzip.CompressBase64([]byte(`from("netty-http:test").log("hello")`))
@@ -555,7 +555,7 @@ func TestServicesWithKnativeProfile(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -600,7 +600,7 @@ func TestServiceWithKnativeServiceDisabledInIntegrationPlatform(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	compressedRoute, err := gzip.CompressBase64([]byte(`from("netty-http:test").log("hello")`))
@@ -637,7 +637,7 @@ func TestServiceWithKnativeServiceDisabledInIntegrationPlatform(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -680,7 +680,7 @@ func TestServiceAutoConfiguration(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	compressedRoute, err := gzip.CompressBase64([]byte(`from("netty-http:test").log("hello")`))
@@ -721,7 +721,7 @@ func TestServiceAutoConfiguration(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -741,11 +741,11 @@ func TestServiceAutoConfiguration(t *testing.T) {
 	assert.Equal(t, ptr.To(true), traits.Service.Enabled)
 }
 
-func TestServiceAnnotations(t *testing.T) {
+func TestServiceAnnotationsAndLables(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
 
-	client, _ := test.NewFakeClient()
+	client, _ := internal.NewFakeClient()
 	traitCatalog := NewCatalog(nil)
 
 	compressedRoute, err := gzip.CompressBase64([]byte(`from("netty-http:test").log("hello")`))
@@ -782,6 +782,10 @@ func TestServiceAnnotations(t *testing.T) {
 							"annotation-1": "value-1",
 							"annotation-2": "value-2",
 						},
+						Labels: map[string]string{
+							"label-1": "v1",
+							"label-2": "v2",
+						},
 					},
 				},
 			},
@@ -795,7 +799,7 @@ func TestServiceAnnotations(t *testing.T) {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -818,6 +822,12 @@ func TestServiceAnnotations(t *testing.T) {
 	})
 	assert.NotNil(t, s)
 	assert.NotNil(t, s.Annotations)
+	assert.Len(t, s.Annotations, 2)
 	assert.Equal(t, "value-1", s.Annotations["annotation-1"])
 	assert.Equal(t, "value-2", s.Annotations["annotation-2"])
+	// There are other labels added by other traits
+	assert.Len(t, s.Labels, 5)
+	assert.Equal(t, "v1", s.Labels["label-1"])
+	assert.Equal(t, "v2", s.Labels["label-2"])
+	assert.Equal(t, ServiceTestName, s.Labels[v1.IntegrationLabel])
 }

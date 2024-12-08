@@ -33,10 +33,10 @@ import (
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	"github.com/apache/camel-k/v2/pkg/internal"
 	"github.com/apache/camel-k/v2/pkg/util/boolean"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
-	"github.com/apache/camel-k/v2/pkg/util/test"
 )
 
 const (
@@ -111,7 +111,7 @@ func createTestRouteEnvironment(t *testing.T, name string) *Environment {
 
 	catalog, err := camel.DefaultCatalog()
 	require.NoError(t, err)
-	client, _ := test.NewFakeClient(
+	client, _ := internal.NewFakeClient(
 		&corev1.Secret{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: "v1",
@@ -164,7 +164,7 @@ func createTestRouteEnvironment(t *testing.T, name string) *Environment {
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: v1.IntegrationPlatformClusterOpenShift,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
+					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
 					Registry:        v1.RegistrySpec{Address: "registry"},
 					RuntimeVersion:  catalog.Runtime.Version,
 				},
@@ -353,9 +353,8 @@ func TestRoute_TLS_wrong_secret(t *testing.T) {
 			TLSDestinationCACertificateSecret: "404",
 		},
 	}
-	conditions, traits, err := traitsCatalog.apply(environment)
+	_, traits, err := traitsCatalog.apply(environment)
 	assert.Empty(t, traits)
-	assert.Empty(t, conditions)
 	// there must be errors as the trait has wrong configuration
 	require.Error(t, err)
 	assert.Nil(t, environment.GetTrait("route"))
@@ -382,9 +381,8 @@ func TestRoute_TLS_secret_wrong_key(t *testing.T) {
 			TLSCACertificateSecret: tlsMultipleSecretsName + "/foo",
 		},
 	}
-	conditions, traits, err := traitsCatalog.apply(environment)
+	_, traits, err := traitsCatalog.apply(environment)
 	assert.Empty(t, traits)
-	assert.Empty(t, conditions)
 	// there must be errors as the trait has wrong configuration
 	require.Error(t, err)
 	assert.Nil(t, environment.GetTrait("route"))
@@ -411,9 +409,8 @@ func TestRoute_TLS_secret_missing_key(t *testing.T) {
 			TLSCACertificateSecret: tlsMultipleSecretsName,
 		},
 	}
-	conditions, traits, err := traitsCatalog.apply(environment)
+	_, traits, err := traitsCatalog.apply(environment)
 	assert.Empty(t, traits)
-	assert.Empty(t, conditions)
 	// there must be errors as the trait has wrong configuration
 	require.Error(t, err)
 	assert.Nil(t, environment.GetTrait("route"))

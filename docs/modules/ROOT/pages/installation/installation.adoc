@@ -13,11 +13,12 @@ The first step is to install and run the Camel K operator. You can do it via any
 
 https://kustomize.io[Kustomize] provides a declarative approach to the configuration customization of a Camel-K installation. Kustomize works either with a standalone executable or as a built-in to `kubectl`. The https://github.com/apache/camel-k/tree/main/install[/install] directory provides a series of base and overlays configuration that you can use. You can create your own overlays or customize the one available in the repository to accommodate your need.
 
-```
-$ kubectl apply -k github.com/apache/camel-k/install/overlays/kubernetes/descoped?ref=v2.4.0 --server-side
+```[subs=attributes+]
+$ kubectl create ns camel-k
+$ kubectl apply -k github.com/apache/camel-k/install/overlays/kubernetes/descoped?ref=v{last-released-version} --server-side
 ```
 
-You can specify as `ref` parameter the version you're willing to install (ie, `v2.4.0`). The command above will install a descoped (global) operator in the camel-k namespace.
+You can specify as `ref` parameter the version you're willing to install (ie, `v{last-released-version}`). The command above will install a descoped (global) operator in the camel-k namespace. This is the suggested configuration in order to manage Integrations in all namespaces.
 
 [[helm]]
 === Installation via Helm Hub
@@ -26,7 +27,7 @@ Camel K is available in Helm Hub:
 
 ```
 $ helm repo add camel-k https://apache.github.io/camel-k/charts/
-$ helm install camel-k camel-k/camel-k
+$ helm install camel-k camel-k/camel-k -n camel-k
 ```
 
 More instructions on the https://hub.helm.sh/charts/camel-k/camel-k[Camel K Helm] page.
@@ -62,23 +63,24 @@ The operator is now up and running. However, there is a second step you need to 
 
 The majority of configuration required to tune the operator are stored in an `IntegrationPlatform` custom resource. This is mainly required to provide configuration for the container registry, build time configuration or common profile you want to apply to all your `Integrations`.
 
-Camel K requires a container registry which is used to store the images built for your applications. Certain clusters may use their internal container registry (ie, Openshift, Minikube or https://github.com/kubernetes/enhancements/tree/master/keps/sig-cluster-lifecycle/generic/1755-communicating-a-local-registry[KEP-1755 compatible] clusters).
+Camel K requires a container registry which is used to store the images built for your applications. Certain clusters may use their internal container registry (eg, Openshift, Minikube).
 
-You need to create an `IntegrationPlatform` with the following configuration in the namespace where the operator is running:
+**IMPORTANT:** You need to create an `IntegrationPlatform` with the following configuration in the namespace where the operator is running:
 
 ```yaml
 apiVersion: camel.apache.org/v1
 kind: IntegrationPlatform
 metadata:
-labels:
+  labels:
     app: camel-k
-name: camel-k
-namespace: camel-k
+  name: camel-k
+  namespace: camel-k
 spec:
-build:
+  build:
     registry:
-    address: registry.io
-    insecure: true
+      address: registry.io
+      organization: camel-k
+      insecure: true
 ```
 
 The minimum configuration required is the container registry. Just change the example value with the configuration available for your installation and write as a file as `itp.yaml`.
