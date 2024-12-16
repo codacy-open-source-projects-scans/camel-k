@@ -14,9 +14,9 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/imdario/mergo v0.3.16
 	github.com/jpillora/backoff v1.0.0
-	github.com/magiconair/properties v1.8.7
+	github.com/magiconair/properties v1.8.9
 	github.com/mattn/go-shellwords v1.0.12
-	github.com/onsi/gomega v1.36.0
+	github.com/onsi/gomega v1.36.1
 	// go get github.com/openshift/api@release-4.15
 	github.com/openshift/api v0.0.0-20240228005710-4511c790cc60
 	github.com/operator-framework/api v0.26.0
@@ -41,20 +41,20 @@ require (
 	golang.org/x/text v0.21.0
 	golang.org/x/time v0.8.0
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.30.7
-	k8s.io/apiextensions-apiserver v0.30.7
-	k8s.io/apimachinery v0.30.7
-	k8s.io/cli-runtime v0.30.7
-	k8s.io/client-go v0.30.7
+	k8s.io/api v0.30.8
+	k8s.io/apiextensions-apiserver v0.30.8
+	k8s.io/apimachinery v0.30.8
+	k8s.io/cli-runtime v0.30.8
+	k8s.io/client-go v0.30.8
 	k8s.io/gengo v0.0.0-20240404160639-a0386bf69313
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/kubectl v0.30.7
+	k8s.io/kubectl v0.30.8
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
 	knative.dev/eventing v0.43.3
 	knative.dev/pkg v0.0.0-20241021183759-9b9d535af5ad
 	knative.dev/serving v0.43.0
 	sigs.k8s.io/controller-runtime v0.18.5
-	sigs.k8s.io/structured-merge-diff/v4 v4.4.3
+	sigs.k8s.io/structured-merge-diff/v4 v4.5.0
 )
 
 require (
@@ -129,7 +129,7 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/vbatts/tar-split v0.11.3 // indirect
 	go.opencensus.io v0.24.0 // indirect
-	golang.org/x/crypto v0.30.0 // indirect
+	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa // indirect
 	golang.org/x/mod v0.21.0 // indirect
 	golang.org/x/net v0.32.0 // indirect
