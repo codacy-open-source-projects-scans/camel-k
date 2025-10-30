@@ -1,0 +1,186 @@
+/*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package trait
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
+
+	serving "knative.dev/serving/pkg/apis/serving/v1"
+
+	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	"github.com/apache/camel-k/v2/pkg/internal"
+	"github.com/apache/camel-k/v2/pkg/util/boolean"
+	"github.com/apache/camel-k/v2/pkg/util/camel"
+	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
+)
+
+func NewIstioTestEnv(t *testing.T, d *appsv1.Deployment, s *serving.Service, enabled bool) Environment {
+	t.Helper()
+	client, _ := internal.NewFakeClient()
+	catalog, err := camel.DefaultCatalog()
+	require.NoError(t, err)
+
+	env := Environment{
+		Catalog:        NewEnvironmentTestCatalog(),
+		CamelCatalog:   catalog,
+		Client:         client,
+		IntegrationKit: &v1.IntegrationKit{},
+		Integration: &v1.Integration{
+			Status: v1.IntegrationStatus{
+				Phase: v1.IntegrationPhaseDeploying,
+			},
+			Spec: v1.IntegrationSpec{
+				Traits: v1.Traits{},
+			},
+		},
+		Platform: &v1.IntegrationPlatform{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "ns",
+			},
+			Spec: v1.IntegrationPlatformSpec{
+				Cluster: v1.IntegrationPlatformClusterOpenShift,
+				Build: v1.IntegrationPlatformBuildSpec{
+					RuntimeVersion: catalog.Runtime.Version,
+				},
+			},
+			Status: v1.IntegrationPlatformStatus{
+				Phase: v1.IntegrationPlatformPhaseReady,
+			},
+		},
+		EnvVars:   make([]corev1.EnvVar, 0),
+		Resources: kubernetes.NewCollection(s, d),
+	}
+	env.Platform.ResyncStatusFullConfig()
+
+	if enabled {
+		env.Integration.Spec.Traits.Istio = &traitv1.IstioTrait{
+			Trait: traitv1.Trait{
+				Enabled: ptr.To(true),
+			},
+		}
+	}
+
+	return env
+}
+
+func TestIstioInject(t *testing.T) {
+	s := serving.Service{
+		Spec: serving.ServiceSpec{
+			ConfigurationSpec: serving.ConfigurationSpec{
+				Template: serving.RevisionTemplateSpec{},
+			},
+		},
+	}
+	d := appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{},
+		},
+	}
+
+	env := NewIstioTestEnv(t, &d, &s, true)
+	conditions, traits, err := env.Catalog.apply(&env)
+	require.NoError(t, err)
+	assert.NotEmpty(t, traits)
+	assert.NotEmpty(t, conditions)
+	assert.Empty(t, s.Spec.ConfigurationSpec.Template.Annotations[istioSidecarInjectAnnotation])
+	assert.NotEmpty(t, d.Spec.Template.Annotations[istioSidecarInjectAnnotation])
+}
+
+func TestIstioForcedInjectTrue(t *testing.T) {
+	s := serving.Service{
+		Spec: serving.ServiceSpec{
+			ConfigurationSpec: serving.ConfigurationSpec{
+				Template: serving.RevisionTemplateSpec{},
+			},
+		},
+	}
+	d := appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{},
+		},
+	}
+
+	env := NewIstioTestEnv(t, &d, &s, true)
+	env.Integration.Spec.Traits.Istio.Enabled = ptr.To(true)
+	env.Integration.Spec.Traits.Istio.Inject = ptr.To(true)
+
+	conditions, traits, err := env.Catalog.apply(&env)
+	require.NoError(t, err)
+	assert.NotEmpty(t, traits)
+	assert.NotEmpty(t, conditions)
+	assert.Equal(t, boolean.TrueString, s.Spec.ConfigurationSpec.Template.Annotations[istioSidecarInjectAnnotation])
+	assert.Equal(t, boolean.TrueString, d.Spec.Template.Annotations[istioSidecarInjectAnnotation])
+}
+
+func TestIstioForcedInjectFalse(t *testing.T) {
+	s := serving.Service{
+		Spec: serving.ServiceSpec{
+			ConfigurationSpec: serving.ConfigurationSpec{
+				Template: serving.RevisionTemplateSpec{},
+			},
+		},
+	}
+	d := appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{},
+		},
+	}
+
+	env := NewIstioTestEnv(t, &d, &s, true)
+	env.Integration.Spec.Traits.Istio.Enabled = ptr.To(true)
+	env.Integration.Spec.Traits.Istio.Inject = ptr.To(false)
+
+	conditions, traits, err := env.Catalog.apply(&env)
+	require.NoError(t, err)
+	assert.NotEmpty(t, traits)
+	assert.NotEmpty(t, conditions)
+	assert.Equal(t, boolean.FalseString, s.Spec.ConfigurationSpec.Template.Annotations[istioSidecarInjectAnnotation])
+	assert.Equal(t, boolean.FalseString, d.Spec.Template.Annotations[istioSidecarInjectAnnotation])
+}
+
+func TestIstioDisabled(t *testing.T) {
+	s := serving.Service{
+		Spec: serving.ServiceSpec{
+			ConfigurationSpec: serving.ConfigurationSpec{
+				Template: serving.RevisionTemplateSpec{},
+			},
+		},
+	}
+	d := appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{},
+		},
+	}
+
+	env := NewIstioTestEnv(t, &d, &s, false)
+
+	conditions, traits, err := env.Catalog.apply(&env)
+	require.NoError(t, err)
+	assert.Empty(t, traits)
+	assert.NotEmpty(t, conditions)
+	assert.NotContains(t, env.ExecutedTraits, "istio")
+}

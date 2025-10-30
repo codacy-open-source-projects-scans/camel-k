@@ -1,0 +1,112 @@
+/*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package cmd
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/spf13/cobra"
+
+	k8sclient "sigs.k8s.io/controller-runtime/pkg/client"
+
+	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
+	"github.com/apache/camel-k/v2/pkg/client"
+)
+
+func newCmdRebuild(rootCmdOptions *RootCmdOptions) (*cobra.Command, *rebuildCmdOptions) {
+	options := rebuildCmdOptions{
+		RootCmdOptions: rootCmdOptions,
+	}
+	cmd := cobra.Command{
+		Use:     "rebuild [integration1] [integration2] ...",
+		Short:   "Clear the state of integrations to rebuild them.",
+		Long:    `Clear the state of one or more integrations causing a rebuild. Rebuild always targets Integration CR, the operator is in charge to apply any change to the related bindings resources (if any).`,
+		PreRunE: decode(&options, options.Flags),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := options.validate(args); err != nil {
+				return err
+			}
+			return options.run(cmd, args)
+		},
+	}
+
+	cmd.Flags().Bool("all", false, "Rebuild all integrations")
+
+	return &cmd, &options
+}
+
+type rebuildCmdOptions struct {
+	*RootCmdOptions
+
+	RebuildAll bool `mapstructure:"all"`
+}
+
+func (o *rebuildCmdOptions) validate(args []string) error {
+	if o.RebuildAll && len(args) > 0 {
+		return errors.New("invalid combination: --all flag is set and at least one integration name is provided")
+	}
+	if !o.RebuildAll && len(args) == 0 {
+		return errors.New("invalid combination: provide one or several integration names or set --all flag for all integrations")
+	}
+
+	return nil
+}
+
+func (o *rebuildCmdOptions) run(cmd *cobra.Command, args []string) error {
+	c, err := o.GetCmdClient()
+	if err != nil {
+		return err
+	}
+	var integrations []v1.Integration
+	if o.RebuildAll {
+		if integrations, err = o.listAllIntegrations(c); err != nil {
+			return err
+		}
+	} else if len(args) > 0 {
+		if integrations, err = getIntegrations(o.Context, c, args, o.Namespace); err != nil {
+			return err
+		}
+	}
+
+	if err = o.rebuildIntegrations(c, integrations); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), len(integrations), "integrations have been rebuilt")
+	return nil
+}
+
+func (o *rebuildCmdOptions) listAllIntegrations(c client.Client) ([]v1.Integration, error) {
+	list := v1.NewIntegrationList()
+	if err := c.List(o.Context, &list, k8sclient.InNamespace(o.Namespace)); err != nil {
+		return nil, fmt.Errorf("could not retrieve integrations from namespace %s: %w", o.Namespace, err)
+	}
+	return list.Items, nil
+}
+
+func (o *rebuildCmdOptions) rebuildIntegrations(c k8sclient.StatusClient, integrations []v1.Integration) error {
+	for _, i := range integrations {
+		it := i
+		it.Status = v1.IntegrationStatus{}
+		if err := c.Status().Update(o.Context, &it); err != nil {
+			return fmt.Errorf("could not rebuild integration %s in namespace %s: %w", it.Name, o.Namespace, err)
+		}
+	}
+	return nil
+}

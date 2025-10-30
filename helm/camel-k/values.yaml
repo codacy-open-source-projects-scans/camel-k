@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------------------
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ---------------------------------------------------------------------------
+
+# Default values for camel-k.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+nameOverride: ""
+fullnameOverride: ""
+
+operator:
+  image: docker.io/apache/camel-k:2.9.0-SNAPSHOT
+  global: "false"
+  resources: {}
+  securityContext: {}
+  tolerations: []
+  nodeSelector: {}
+  logLevel: "info"
+
+  ## Deployment annotations
+  annotations:
+  # prometheus.io/path: /metrics
+  # prometheus.io/port: '8080'
+  # prometheus.io/scrape: 'true'
+
+  ## Optionally specify an array of imagePullSecrets.
+  ## Secrets must be manually created in the namespace.
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+  imagePullSecrets:
+  # - name: "image-pull-secret"
+
+  # Default operator name
+  operatorId: camel-k
+
+  serviceAccount:
+    annotations:
+
+  ## Extra environment variables.
+  ## ref: https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/
+  extraEnv: []
+    # - name: MY_VAR
+      # value: my_value
