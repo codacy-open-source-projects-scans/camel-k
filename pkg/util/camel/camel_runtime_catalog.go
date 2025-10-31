@@ -1,0 +1,229 @@
+/*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package camel
+
+import (
+	"strings"
+
+	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
+)
+
+// NewRuntimeCatalog creates a runtime catalog with the given catalog.
+func NewRuntimeCatalog(cat v1.CamelCatalog) *RuntimeCatalog {
+	catalog := RuntimeCatalog{}
+	catalog.CamelCatalogSpec = cat.Spec
+	catalog.CamelCatalogStatus = cat.Status
+	catalog.artifactByScheme = make(map[string]string)
+	catalog.artifactByDataFormat = make(map[string]string)
+	catalog.schemesByID = make(map[string]v1.CamelScheme)
+	catalog.languageDependencies = make(map[string]string)
+	catalog.javaTypeDependencies = make(map[string]string)
+	catalog.loaderByArtifact = make(map[string]string)
+
+	for id, artifact := range catalog.Artifacts {
+		for _, scheme := range artifact.Schemes {
+			// In case of duplicate only, choose the "org.apache.camel.quarkus" artifact (if present).
+			// Workaround for https://github.com/apache/camel-k/v2-runtime/issues/592
+			if _, duplicate := catalog.artifactByScheme[scheme.ID]; duplicate {
+				if artifact.GroupID != "org.apache.camel.quarkus" {
+					continue
+				}
+			}
+
+			catalog.artifactByScheme[scheme.ID] = id
+			catalog.schemesByID[scheme.ID] = scheme
+		}
+		for _, dataFormat := range artifact.DataFormats {
+			catalog.artifactByDataFormat[dataFormat] = id
+		}
+		for _, language := range artifact.Languages {
+			// Skip languages in common dependencies since they are always available to integrations
+			if artifact.ArtifactID != "camel-base" {
+				catalog.languageDependencies[language] = getDependency(artifact, catalog.Runtime.Provider)
+			}
+		}
+		for _, javaType := range artifact.JavaTypes {
+			// Skip types in common dependencies since they are always available to integrations
+			if artifact.ArtifactID != "camel-base" {
+				catalog.javaTypeDependencies[javaType] = getDependency(artifact, catalog.Runtime.Provider)
+			}
+		}
+	}
+
+	for id, loader := range catalog.Loaders {
+		catalog.loaderByArtifact[loader.ArtifactID] = id
+	}
+
+	return &catalog
+}
+
+// RuntimeCatalog represents the data structure for a runtime catalog.
+type RuntimeCatalog struct {
+	v1.CamelCatalogSpec
+	v1.CamelCatalogStatus
+
+	artifactByScheme     map[string]string
+	artifactByDataFormat map[string]string
+	schemesByID          map[string]v1.CamelScheme
+	languageDependencies map[string]string
+	javaTypeDependencies map[string]string
+	loaderByArtifact     map[string]string
+}
+
+// HasArtifact checks if the given artifact is present in the catalog.
+func (c *RuntimeCatalog) HasArtifact(artifact string) bool {
+	a := artifact
+	if !strings.HasPrefix(a, "camel-") {
+		if c.Runtime.Provider.IsQuarkusBased() {
+			a = "camel-quarkus-" + a
+		} else {
+			a = "camel-" + a
+		}
+	}
+
+	_, ok := c.Artifacts[a]
+
+	return ok
+}
+
+// HasLoaderByArtifact checks if the given artifact is a loader in the catalog.
+func (c *RuntimeCatalog) HasLoaderByArtifact(artifact string) bool {
+	a := artifact
+	if !strings.HasPrefix(a, "camel-") {
+		if c.Runtime.Provider.IsQuarkusBased() {
+			a = "camel-quarkus-" + a
+		} else {
+			a = "camel-" + a
+		}
+	}
+
+	_, ok := c.loaderByArtifact[a]
+
+	return ok
+}
+
+// IsValidArtifact returns true if the given artifact is an artifact or loader in the catalog.
+func (c *RuntimeCatalog) IsValidArtifact(artifact string) bool {
+	return c.HasArtifact(artifact) || c.HasLoaderByArtifact(artifact)
+}
+
+// GetArtifactByScheme returns the artifact corresponding to the given component scheme.
+func (c *RuntimeCatalog) GetArtifactByScheme(scheme string) *v1.CamelArtifact {
+	if id, ok := c.artifactByScheme[scheme]; ok {
+		if artifact, present := c.Artifacts[id]; present {
+			return &artifact
+		}
+	}
+	return nil
+}
+
+// GetArtifactByDataFormat returns the artifact corresponding to the given data format.
+func (c *RuntimeCatalog) GetArtifactByDataFormat(dataFormat string) *v1.CamelArtifact {
+	if id, ok := c.artifactByDataFormat[dataFormat]; ok {
+		if artifact, present := c.Artifacts[id]; present {
+			return &artifact
+		}
+	}
+	return nil
+}
+
+// GetScheme returns the scheme definition for the given scheme id.
+func (c *RuntimeCatalog) GetScheme(id string) (v1.CamelScheme, bool) {
+	scheme, ok := c.schemesByID[id]
+	return scheme, ok
+}
+
+// GetLanguageDependency returns the maven dependency for the given language name.
+func (c *RuntimeCatalog) GetLanguageDependency(language string) (string, bool) {
+	language, ok := c.languageDependencies[language]
+	return language, ok
+}
+
+// GetJavaTypeDependency returns the maven dependency for the given type name.
+func (c *RuntimeCatalog) GetJavaTypeDependency(camelType string) (string, bool) {
+	javaType, ok := c.javaTypeDependencies[camelType]
+	return javaType, ok
+}
+
+// VisitArtifacts --.
+func (c *RuntimeCatalog) VisitArtifacts(visitor func(string, v1.CamelArtifact) bool) {
+	for id, artifact := range c.Artifacts {
+		if !visitor(id, artifact) {
+			break
+		}
+	}
+}
+
+// VisitSchemes --.
+func (c *RuntimeCatalog) VisitSchemes(visitor func(string, v1.CamelScheme) bool) {
+	for id, scheme := range c.schemesByID {
+		if !visitor(id, scheme) {
+			break
+		}
+	}
+}
+
+// DecodeComponent parses the given URI and return a camel artifact and a scheme.
+func (c *RuntimeCatalog) DecodeComponent(uri string) (*v1.CamelArtifact, *v1.CamelScheme) {
+
+	var uriSplit []string
+
+	// Decode URI using formats http://my-site/test?param=value or log:info
+	switch {
+	case strings.Contains(uri, ":"):
+		uriSplit = strings.SplitN(uri, ":", 2)
+		if len(uriSplit) < 2 {
+			return nil, nil
+		}
+	case strings.Contains(uri, "?"):
+		uriSplit = strings.SplitN(uri, "?", 2)
+		if len(uriSplit) < 2 {
+			return nil, nil
+		}
+	default:
+		uriSplit = append(uriSplit, uri)
+	}
+
+	uriStart := uriSplit[0]
+	var schemeRef *v1.CamelScheme
+	if scheme, ok := c.GetScheme(uriStart); ok {
+		schemeRef = &scheme
+	}
+	return c.GetArtifactByScheme(uriStart), schemeRef
+}
+
+// IsResolvable checks given URI for proper Camel format (e.g. resolvable scheme).
+func (c *RuntimeCatalog) IsResolvable(uri string) bool {
+	uriSplit := strings.SplitN(uri, ":", 2)
+
+	if len(uriSplit) == 0 {
+		return false
+	}
+
+	scheme := uriSplit[0]
+	if strings.Contains(scheme, "?") {
+		scheme = strings.SplitN(scheme, "?", 2)[0]
+	}
+
+	if strings.HasPrefix(scheme, "{{") && strings.Contains(scheme, "}}") {
+		// scheme is a property placeholder (e.g. {{url}}) which is not resolvable
+		return false
+	}
+
+	return true
+}

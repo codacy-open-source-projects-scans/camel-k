@@ -1,0 +1,41 @@
+= Camel dependencies matrix
+
+Camel K was originally equipped with a dedicated runtime known as Camel K Runtime. This is a lightweight layer on top of Camel Quarkus. However, you can directly run plain regular Camel Quarkus runtime applications as well. This will become the standard only from version 3.x onward in order to avoid breaking backward compatibility. In the while you're strongly encouraged to use `plain-quarkus` Camel runtime configuration to ease any future 3.x migration.
+
+NOTE: you can use any available Camel Quarkus runtime version. Alternatively you can also build any other Camel runtimes building from a Git hosted repository.
+
+[caption=]
+.Camel dependencies matrix
+[width="100%",cols="4,2,2,2,2,2,3",options="header"]
+|===
+|Camel K Version
+|Last release
+|(Default) Camel K Runtime
+|Camel Quarkus
+|Camel
+|Quarkus
+|Branch
+|===
+
+//cannot use top level index.adoc as the page with the query is always omitted.
+indexTable::[version="*",relative="running/running.adoc",cellformats="util.ckRef(pageComponentDisplayVersion, pageComponentVersion)|lastReleasedVersion|camelKRuntimeVersion|camelQuarkusVersion|camelVersion|quarkusVersion|ck.branch(pageComponentVersion)", requires={requires},transform=util.sortCompatibilityItems]
+
+== Other APIs version matrix
+
+Below you can find a list of the main dependencies and APIs used by Camel K and the related compatibility.
+
+[caption=]
+.Kubernetes and other dependencies
+[width="100%",cols="4,2,2,2,2,2",options="header"]
+|===
+|Camel K Version
+|Kubernetes API
+|Operator Framework API
+|Knative API
+|Prometheus Operator
+|Kustomize version
+|===
+
+//cannot use top level index.adoc as the page with the query is always omitted.
+indexTable::[version="*",relative="running/running.adoc",cellformats="util.ckRef(pageComponentDisplayVersion, pageComponentVersion)|kubernetesApiVersion|operatorFwkApiVersion|knativeApiVersion|prometheusOpVersion|kustomizeVersion", requires={requires},transform=util.sortCompatibilityItems]
+

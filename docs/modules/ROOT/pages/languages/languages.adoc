@@ -1,0 +1,16 @@
+[[languages]]
+= Languages
+
+Camel K supports multiple languages for writing integrations:
+
+.Supported Languages
+[options="header"]
+[cols="30%,70%"]
+|=======================
+| Language			| Description
+| xref:languages/java.adoc[Java]                | Integrations written in Java DSL are supported
+| xref:languages/xml.adoc[XML]                  | Integrations written in plain XML DSL are supported (Spring XML with <beans> or Blueprint XML with <blueprint> not supported)
+| xref:languages/yaml.adoc[YAML]                | Integrations written in YAML DSL are supported
+|=======================
+
+More information about each language is located in the language specific sections. Mind that the compatibility of each DSL with Camel will depend on the runtime you'll use to run the Integration.

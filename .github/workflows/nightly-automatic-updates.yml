@@ -1,0 +1,55 @@
+# ---------------------------------------------------------------------------
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ---------------------------------------------------------------------------
+
+name: Nightly automatic updates
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+on:
+  schedule:
+    - cron:  '30 23 * * *'
+  workflow_dispatch:
+
+jobs:
+  auto-updates:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        ref-branch: [main, release-2.7.x, release-2.8.x]
+
+    if: github.repository == 'apache/camel-k'
+    runs-on: ubuntu-latest
+    name: Automatic updates on ${{ matrix.ref-branch }} branch
+    steps:
+
+    - name: "Checkout code"
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ matrix.ref-branch }}
+        persist-credentials: false
+        submodules: recursive
+
+    - name: "Run upgrade action"
+      uses: ./.github/actions/automatic-updates
+      with:
+        branch-ref: ${{ matrix.ref-branch }}
+        secretGithubToken: ${{ secrets.GITHUB_TOKEN }}
+        goVersionFile: "go.mod"
+        javaVersion: "17"
+        javaDistribution: "temurin"

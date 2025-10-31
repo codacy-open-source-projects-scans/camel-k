@@ -1,0 +1,336 @@
+/*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package digest
+
+import (
+	// this is needed to generate an SHA1 sum for Jars
+	// #nosec G505
+	"crypto/sha1"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"hash"
+	"io"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+
+	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
+	"github.com/apache/camel-k/v2/pkg/util"
+	"github.com/apache/camel-k/v2/pkg/util/defaults"
+
+	"fmt"
+)
+
+const (
+	// IntegrationDigestEnvVar -- .
+	IntegrationDigestEnvVar = "CAMEL_K_DIGEST"
+)
+
+// ComputeForIntegration a digest of the fields that are relevant for the deployment
+// Produces a digest that can be used as docker image tag.
+func ComputeForIntegration(integration *v1.Integration, configmapVersions []string, secretVersions []string) (string, error) {
+	hash := sha256.New()
+	// Integration version is relevant
+	if _, err := hash.Write([]byte(integration.Status.Version)); err != nil {
+		return "", err
+	}
+
+	// Integration operator id is relevant
+	if _, err := hash.Write([]byte(v1.GetOperatorIDAnnotation(integration))); err != nil {
+		return "", err
+	}
+
+	// Integration profile is relevant
+	if _, err := hash.Write([]byte(v1.GetIntegrationProfileAnnotation(integration))); err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(v1.GetIntegrationProfileNamespaceAnnotation(integration))); err != nil {
+		return "", err
+	}
+
+	// Integration Kit is relevant
+	if integration.Spec.IntegrationKit != nil {
+		if _, err := fmt.Fprintf(hash, "%s/%s", integration.Spec.IntegrationKit.Namespace, integration.Spec.IntegrationKit.Name); err != nil {
+			return "", err
+		}
+	}
+	// Profile is relevant
+	if _, err := hash.Write([]byte(integration.Spec.Profile)); err != nil {
+		return "", err
+	}
+
+	// Integration code
+	for _, s := range integration.Spec.Sources {
+		if s.Content != "" {
+			if _, err := hash.Write([]byte(s.Content)); err != nil {
+				return "", err
+			}
+		}
+	}
+
+	// Integration flows
+	if len(integration.Spec.Flows) > 0 {
+		flows, err := v1.ToYamlDSL(integration.Spec.Flows)
+		if err != nil {
+			return "", err
+		}
+		if _, err := hash.Write(flows); err != nil {
+			return "", err
+		}
+	}
+
+	// Integration dependencies
+	for _, item := range integration.Spec.Dependencies {
+		if _, err := hash.Write([]byte(item)); err != nil {
+			return "", err
+		}
+	}
+
+	// Integration configuration
+	for _, item := range integration.Spec.Configuration {
+		if _, err := hash.Write([]byte(item.String())); err != nil {
+			return "", err
+		}
+	}
+
+	// Git spec
+	if integration.Spec.Git != nil {
+		gitSpec := integration.Spec.Git.URL + "/" + integration.Spec.Git.Secret
+		switch {
+		case integration.Spec.Git.Tag != "":
+			gitSpec = gitSpec + "/" + integration.Spec.Git.Tag
+		case integration.Spec.Git.Branch != "":
+			gitSpec = gitSpec + "/" + integration.Spec.Git.Branch
+		case integration.Spec.Git.Commit != "":
+			gitSpec = gitSpec + "/" + integration.Spec.Git.Commit
+		}
+		if _, err := hash.Write([]byte(gitSpec)); err != nil {
+			return "", err
+		}
+	}
+
+	// Integration traits
+	// Calculation logic prior to 1.10.0 (the new Traits API schema) is maintained
+	// in order to keep consistency in the digest calculated from the same set of
+	// Trait configurations for backward compatibility.
+	if err := computeForTraits(hash, integration.Spec.Traits); err != nil {
+		return "", err
+	}
+
+	// Integration traits as annotations
+	for _, k := range sortedTraitAnnotationsKeys(integration) {
+		v := integration.Annotations[k]
+		if _, err := fmt.Fprintf(hash, "%s=%v,", k, v); err != nil {
+			return "", err
+		}
+	}
+
+	// Configmap versions
+	for _, cm := range configmapVersions {
+		if cm != "" {
+			if _, err := hash.Write([]byte(cm)); err != nil {
+				return "", err
+			}
+		}
+	}
+
+	// Secret versions
+	for _, s := range secretVersions {
+		if s != "" {
+			if _, err := hash.Write([]byte(s)); err != nil {
+				return "", err
+			}
+		}
+	}
+
+	// Add a letter at the beginning and use URL safe encoding
+	digest := "v" + base64.RawURLEncoding.EncodeToString(hash.Sum(nil))
+	return digest, nil
+}
+
+func computeForTraits(hash hash.Hash, traits v1.Traits) error {
+	specTraitsMap, err := toMap(traits)
+	if err != nil {
+		return err
+	}
+	for _, name := range sortedTraitsMapKeys(specTraitsMap) {
+		if err := computeForTrait(hash, name, specTraitsMap[name]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func computeForTrait(hash hash.Hash, name string, trait map[string]interface{}) error {
+	if _, err := hash.Write([]byte(name + "[")); err != nil {
+		return err
+	}
+	// hash legacy configuration first
+	if trait["configuration"] != nil {
+		if config, ok := trait["configuration"].(map[string]interface{}); ok {
+			if err := computeForTraitProps(hash, config); err != nil {
+				return err
+			}
+		}
+		delete(trait, "configuration")
+	}
+	if err := computeForTraitProps(hash, trait); err != nil {
+		return err
+	}
+	if _, err := hash.Write([]byte("]")); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func computeForTraitProps(hash hash.Hash, props map[string]interface{}) error {
+	for _, prop := range util.SortedMapKeys(props) {
+		val := props[prop]
+		if _, err := fmt.Fprintf(hash, "%s=%v,", prop, val); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func toMap(traits v1.Traits) (map[string]map[string]interface{}, error) {
+	data, err := json.Marshal(traits)
+	if err != nil {
+		return nil, err
+	}
+	traitsMap := make(map[string]map[string]interface{})
+	if err = json.Unmarshal(data, &traitsMap); err != nil {
+		return nil, err
+	}
+
+	return traitsMap, nil
+}
+
+// ComputeForIntegrationKit a digest of the fields that are relevant for the deployment
+// Produces a digest that can be used as docker image tag.
+func ComputeForIntegrationKit(kit *v1.IntegrationKit) (string, error) {
+	hash := sha256.New()
+	// Kit version is relevant
+	if _, err := hash.Write([]byte(kit.Status.Version)); err != nil {
+		return "", err
+	}
+
+	if _, err := hash.Write([]byte(kit.Spec.Image)); err != nil {
+		return "", err
+	}
+
+	for _, item := range kit.Spec.Dependencies {
+		if _, err := hash.Write([]byte(item)); err != nil {
+			return "", err
+		}
+	}
+	for _, item := range kit.Spec.Configuration {
+		if _, err := hash.Write([]byte(item.String())); err != nil {
+			return "", err
+		}
+	}
+
+	// Add a letter at the beginning and use URL safe encoding
+	digest := "v" + base64.RawURLEncoding.EncodeToString(hash.Sum(nil))
+	return digest, nil
+}
+
+// ComputeForSource returns a digest for the specific source.
+func ComputeForSource(s v1.SourceSpec) (string, error) {
+	hash := sha256.New()
+	// Operator version is relevant
+	if _, err := hash.Write([]byte(defaults.Version)); err != nil {
+		return "", err
+	}
+
+	if _, err := hash.Write([]byte(s.Content)); err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(s.Name)); err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(s.Type)); err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(s.Language)); err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(s.ContentKey)); err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(s.ContentRef)); err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(s.Loader)); err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(strconv.FormatBool(s.Compression))); err != nil {
+		return "", err
+	}
+
+	// Add a letter at the beginning and use URL safe encoding
+	digest := "v" + base64.RawURLEncoding.EncodeToString(hash.Sum(nil))
+	return digest, nil
+}
+
+func sortedTraitsMapKeys(m map[string]map[string]interface{}) []string {
+	res := make([]string, len(m))
+	i := 0
+	for k := range m {
+		res[i] = k
+		i++
+	}
+	sort.Strings(res)
+	return res
+}
+
+// Deprecated: to be removed in future versions.
+func sortedTraitAnnotationsKeys(it *v1.Integration) []string {
+	res := make([]string, 0, len(it.Annotations))
+	for k := range it.Annotations {
+		if strings.HasPrefix(k, v1.TraitAnnotationPrefix) {
+			res = append(res, k)
+		}
+	}
+	sort.Strings(res)
+	return res
+}
+
+func ComputeSHA1(elem ...string) (string, error) {
+	file := filepath.Join(elem...)
+
+	// #nosec G401
+	h := sha1.New()
+
+	err := util.WithFileReader(file, func(file io.Reader) error {
+		if _, err := io.Copy(h, file); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(h.Sum(nil)), nil
+}

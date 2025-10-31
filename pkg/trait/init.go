@@ -1,0 +1,94 @@
+/*
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package trait
+
+import (
+	"errors"
+	"sort"
+
+	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	"github.com/apache/camel-k/v2/pkg/util"
+	"k8s.io/utils/ptr"
+)
+
+const (
+	initTraitID    = "init"
+	initTraitOrder = 1
+)
+
+type initTrait struct {
+	BaseTrait
+	traitv1.Trait `property:",squash"`
+}
+
+func NewInitTrait() Trait {
+	return &initTrait{
+		BaseTrait: NewBaseTrait(initTraitID, initTraitOrder),
+	}
+}
+
+func (t *initTrait) Configure(e *Environment) (bool, *TraitCondition, error) {
+	if !ptr.Deref(t.Enabled, true) {
+		return false, nil, errors.New("trait init cannot be disabled")
+	}
+
+	return e.IntegrationInPhase(v1.IntegrationPhaseInitialization), nil, nil
+}
+
+func (t *initTrait) Apply(e *Environment) error {
+	// Flows need to be turned into a generated source
+	if len(e.Integration.Spec.Flows) > 0 {
+		content, err := v1.ToYamlDSL(e.Integration.Spec.Flows)
+		if err != nil {
+			return err
+		}
+		e.Integration.Status.AddOrReplaceGeneratedSources(v1.SourceSpec{
+			DataSpec: v1.DataSpec{
+				Name:    v1.IntegrationFlowEmbeddedSourceName,
+				Content: string(content),
+			},
+		})
+	}
+
+	// Dependencies need to be recomputed in case of a trait declares a capability but as
+	// the dependencies trait runs earlier than some task such as the cron one, we need to
+	// register a post step processor that recompute the dependencies based on the declared
+	// capabilities.
+	e.PostStepProcessors = append(e.PostStepProcessors, func(environment *Environment) error {
+		// The camel catalog is set up by the camel trait, so it may not be available for
+		// traits executed before that one.
+		if e.CamelCatalog != nil {
+			// add runtime specific dependencies
+			for _, capability := range e.Integration.Status.Capabilities {
+				for _, dependency := range e.CamelCatalog.Runtime.CapabilityDependencies(capability) {
+					util.StringSliceUniqueAdd(&e.Integration.Status.Dependencies, dependency.GetDependencyID())
+				}
+			}
+		}
+
+		if e.Integration.Status.Dependencies != nil {
+			// sort the dependencies to get always the same list if they don't change
+			sort.Strings(e.Integration.Status.Dependencies)
+		}
+
+		return nil
+	})
+
+	return nil
+}
