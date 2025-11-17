@@ -82,7 +82,6 @@ func (action *buildAction) handleBuildSubmitted(ctx context.Context, kit *v1.Int
 		build.Status.Phase == v1.BuildPhaseError ||
 		build.Status.Phase == v1.BuildPhaseInterrupted ||
 		build.Status.Phase == v1.BuildPhaseSucceeded {
-
 		b, err := action.createBuild(ctx, kit)
 		if err != nil {
 			return nil, err
@@ -93,6 +92,7 @@ func (action *buildAction) handleBuildSubmitted(ctx context.Context, kit *v1.Int
 
 	if build.Status.Phase == v1.BuildPhaseRunning {
 		kit.Status.Phase = v1.IntegrationKitPhaseBuildRunning
+
 		return kit, nil
 	}
 

@@ -69,6 +69,7 @@ func (t *builderTask) Do(ctx context.Context) v1.BuildStatus {
 	if err != nil {
 		t.log.Errorf(err, "invalid builder steps: %s", t.task.Steps)
 		result.Failed(err)
+
 		return result
 	}
 	// Sort steps by phase
@@ -81,7 +82,6 @@ func (t *builderTask) Do(ctx context.Context) v1.BuildStatus {
 steps:
 	for _, step := range steps {
 		select {
-
 		case <-ctx.Done():
 			if errors.Is(ctx.Err(), context.Canceled) {
 				// Context canceled
@@ -91,6 +91,7 @@ steps:
 				result.Phase = v1.BuildPhaseFailed
 			}
 			result.Error = ctx.Err().Error()
+
 			break steps
 
 		default:
@@ -102,6 +103,7 @@ steps:
 			if err != nil {
 				l.Infof("step failed with error: %s", err.Error())
 				result.Failed(err)
+
 				break steps
 			}
 
@@ -111,6 +113,7 @@ steps:
 
 	if result.Phase == v1.BuildPhaseInterrupted {
 		t.log.Infof("build task %s interrupted", t.task.Name)
+
 		return result
 	}
 

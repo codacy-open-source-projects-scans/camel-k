@@ -129,7 +129,6 @@ func (i YAMLInspector) parseStep(key string, content interface{}, meta *Metadata
 		maybeURI = t
 	case map[interface{}]interface{}:
 		for k, v := range t {
-
 			if s, ok := k.(string); ok {
 				if dependency, ok := i.catalog.GetLanguageDependency(s); ok {
 					meta.AddDependency(dependency)
@@ -207,6 +206,7 @@ func (i YAMLInspector) parseStep(key string, content interface{}, meta *Metadata
 			meta.ToURIs = append(meta.ToURIs, maybeURI)
 		}
 	}
+
 	return nil
 }
 
@@ -214,7 +214,6 @@ func (i YAMLInspector) parseStep(key string, content interface{}, meta *Metadata
 func (i YAMLInspector) parseStepsParam(steps []interface{}, meta *Metadata) error {
 	for _, raw := range steps {
 		if step, stepFormatOk := raw.(map[interface{}]interface{}); stepFormatOk {
-
 			if len(step) != 1 {
 				return fmt.Errorf("unable to parse step: %v", step)
 			}
@@ -235,6 +234,7 @@ func (i YAMLInspector) parseStepsParam(steps []interface{}, meta *Metadata) erro
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -279,6 +279,7 @@ func (i YAMLInspector) ReplaceFromURI(source *v1.SourceSpec, newFromURI string) 
 	newContent := string(newContentRaw)
 	if newContent != source.Content {
 		source.Content = newContent
+
 		return true, nil
 	}
 

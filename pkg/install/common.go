@@ -52,6 +52,7 @@ var RemoveIngressRoleCustomizer = func(object ctrl.Object) ctrl.Object {
 			}
 		}
 	}
+
 	return object
 }
 
@@ -62,7 +63,6 @@ func Resource(ctx context.Context, c client.Client, namespace string, force bool
 
 func ResourceOrCollect(ctx context.Context, c client.Client, namespace string, collection *kubernetes.Collection,
 	force bool, customizer ResourceCustomizer, name string) error {
-
 	content, err := resources.ResourceAsString(name)
 	if err != nil {
 		return err
@@ -80,6 +80,7 @@ func ObjectOrCollect(ctx context.Context, c client.Client, namespace string, col
 	if collection != nil {
 		// Adding to the collection before setting the namespace
 		collection.Add(obj)
+
 		return nil
 	}
 
@@ -97,6 +98,7 @@ func ObjectOrCollect(ctx context.Context, c client.Client, namespace string, col
 				return err
 			}
 		}
+
 		return nil
 	}
 

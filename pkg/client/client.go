@@ -119,12 +119,12 @@ func NewClient(fastDiscovery bool) (Client, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return NewClientWithConfig(fastDiscovery, cfg)
 }
 
 // NewClientWithConfig creates a new k8s client that can be used from outside or in the cluster.
 func NewClientWithConfig(fastDiscovery bool, cfg *rest.Config) (Client, error) {
-
 	// The below call to apis.AddToScheme is not thread safe in the k8s API
 	// We try to synchronize here across all k8s clients
 	// https://github.com/apache/camel-k/issues/5315
@@ -269,6 +269,7 @@ func GetCurrentNamespace(kubeconfig string) (string, error) {
 
 	cc := clientcmd.NewDefaultClientConfig(*clientcmdconfig, &clientcmd.ConfigOverrides{})
 	ns, _, err := cc.Namespace()
+
 	return ns, err
 }
 
@@ -294,8 +295,10 @@ func shouldUseContainerMode() (bool, error) {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
+
 		return true, err
 	}
+
 	return false, nil
 }
 
@@ -305,5 +308,6 @@ func getNamespaceFromKubernetesContainer() (string, error) {
 	if nsba, err = os.ReadFile(inContainerNamespaceFile); err != nil {
 		return "", err
 	}
+
 	return string(nsba), nil
 }

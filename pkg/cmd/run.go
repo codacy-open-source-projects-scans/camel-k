@@ -93,8 +93,8 @@ func newCmdRun(rootCmdOptions *RootCmdOptions) (*cobra.Command, *runCmdOptions) 
 		"key optionally represents the configmap/secret key to be filtered and path represents the destination path)")
 	cmd.Flags().StringArray("maven-repository", nil, "Add a maven repository")
 	cmd.Flags().Bool("logs", false, "Print integration logs")
-	cmd.Flags().Bool("sync", false, "Synchronize the local source file with the cluster, republishing at each change")
-	cmd.Flags().Bool("dev", false, "Enable Dev mode (equivalent to \"-w --logs --sync\")")
+	cmd.Flags().Bool("sync", false, "[Deprecated] Synchronize the local source file with the cluster, republishing at each change")
+	cmd.Flags().Bool("dev", false, "[Deprecated] Enable Dev mode (equivalent to \"-w --logs --sync\")")
 	cmd.Flags().Bool("use-flows", true, "Write yaml sources as Flow objects in the integration custom resource")
 	cmd.Flags().StringP("operator-id", "x", "camel-k", "Operator id selected to manage this integration.")
 	cmd.Flags().String("profile", "", "Trait profile used for deployment")
@@ -128,10 +128,12 @@ type runCmdOptions struct {
 	Compression bool `mapstructure:"compression" yaml:",omitempty"`
 	Wait        bool `mapstructure:"wait" yaml:",omitempty"`
 	Logs        bool `mapstructure:"logs" yaml:",omitempty"`
-	Sync        bool `mapstructure:"sync" yaml:",omitempty"`
-	Dev         bool `mapstructure:"dev" yaml:",omitempty"`
-	UseFlows    bool `mapstructure:"use-flows" yaml:",omitempty"`
-	Save        bool `mapstructure:"save" yaml:",omitempty" kamel:"omitsave"`
+	// Deprecated: won't be supported in the future
+	Sync bool `mapstructure:"sync" yaml:",omitempty"`
+	// Deprecated: won't be supported in the future
+	Dev      bool `mapstructure:"dev" yaml:",omitempty"`
+	UseFlows bool `mapstructure:"use-flows" yaml:",omitempty"`
+	Save     bool `mapstructure:"save" yaml:",omitempty" kamel:"omitsave"`
 	// Deprecated: won't be supported in the future
 	IntegrationKit     string `mapstructure:"kit" yaml:",omitempty"`
 	IntegrationName    string `mapstructure:"name" yaml:",omitempty"`
@@ -300,6 +302,11 @@ func (o *runCmdOptions) validate(cmd *cobra.Command) error {
 		fmt.Fprintf(cmd.OutOrStdout(), "Compression property is deprecated. It will be removed from future releases.\n")
 	}
 
+	// Deprecated: to be removed
+	if o.Sync || o.Dev {
+		fmt.Fprintf(cmd.OutOrStdout(), "Dev and Sync properties are deprecated. They will be removed from future releases.\n")
+	}
+
 	var client client.Client
 	if !isOfflineCommand(cmd) {
 		client, err = o.GetCmdClient()
@@ -373,6 +380,7 @@ func (o *runCmdOptions) run(cmd *cobra.Command, args []string) error {
 		//nolint:errcheck
 		go watch.HandleIntegrationEvents(o.Context, c, integration, func(event *corev1.Event) bool {
 			fmt.Fprintln(cmd.OutOrStdout(), event.Message)
+
 			return true
 		})
 	}
@@ -495,6 +503,7 @@ func (o *runCmdOptions) syncIntegration(cmd *cobra.Command, c client.Client, sou
 						newCmd.PreRunE = o.decode
 						newCmd.RunE = func(cmd *cobra.Command, args []string) error {
 							_, err := o.createOrUpdateIntegration(cmd, c, sources)
+
 							return err
 						}
 						newCmd.PostRunE = nil
@@ -563,14 +572,17 @@ func (o *runCmdOptions) createOrUpdateIntegration(cmd *cobra.Command, c client.C
 	} else if o.GitRepo != "" {
 		if o.GitBranch != "" && o.GitTag != "" {
 			err := errors.New("illegal arguments: cannot specify both git branch and tag")
+
 			return nil, err
 		}
 		if o.GitBranch != "" && o.GitCommit != "" {
 			err := errors.New("illegal arguments: cannot specify both git branch and commit")
+
 			return nil, err
 		}
 		if o.GitTag != "" && o.GitCommit != "" {
 			err := errors.New("illegal arguments: cannot specify both git tag and commit")
+
 			return nil, err
 		}
 		integration.Spec.Git = &v1.GitConfigSpec{
@@ -625,6 +637,7 @@ func (o *runCmdOptions) createOrUpdateIntegration(cmd *cobra.Command, c client.C
 
 		if string(d) == "{}" {
 			fmt.Fprintln(cmd.OutOrStdout(), `Integration "`+name+`" unchanged`)
+
 			return integration, nil
 		}
 		err = c.Patch(o.Context, integration, patch)
@@ -646,6 +659,7 @@ func showIntegrationOutput(cmd *cobra.Command, integration *v1.Integration, outp
 	printer.Delegate = &kubernetes.CLIPrinter{
 		Format: outputFormat,
 	}
+
 	return printer.PrintObj(integration, cmd.OutOrStdout())
 }
 
@@ -798,6 +812,7 @@ func (o *runCmdOptions) parseAndConvertToTrait(cmd *cobra.Command,
 		}
 		o.Traits = append(o.Traits, convertToTrait(convert(config), traitParam))
 	}
+
 	return nil
 }
 
@@ -868,7 +883,6 @@ func (o *runCmdOptions) applyDependencies(cmd *cobra.Command, it *v1.Integration
 			}
 		}
 		addDependency(cmd, it, item, catalog)
-
 	}
 
 	return nil
@@ -892,6 +906,7 @@ func (o *runCmdOptions) GetIntegrationName(sources []string) (string, error) {
 		}
 		name = kubernetes.SanitizeName(gitRepoName)
 	}
+
 	return name, nil
 }
 
@@ -929,6 +944,7 @@ func (o *runCmdOptions) mergePropertiesWithPrecedence(c client.Client, items []s
 	// Any property contained in both collections will be merged
 	// giving precedence to the ones in hiPrecedenceProps
 	loPrecedenceProps.Merge(hiPrecedenceProps)
+
 	return loPrecedenceProps, nil
 }
 
@@ -957,6 +973,7 @@ func loadPropertyFile(fileName string) (*properties.Properties, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return p, nil
 }
 
@@ -989,5 +1006,6 @@ func resolvePodTemplate(ctx context.Context, cmd *cobra.Command, templateSrc str
 			Spec: template,
 		}
 	}
+
 	return err
 }

@@ -80,6 +80,7 @@ func nativeImageContext(ctx *builderContext) error {
 			},
 		}
 		ctx.SelectedArtifacts = ctx.Artifacts
+
 		return nil
 	})
 }
@@ -136,7 +137,6 @@ func incrementalImageContext(ctx *builderContext) error {
 
 		bestImage, commonLibs := findBestImage(images, ctx.Artifacts)
 		if bestImage.Image != "" {
-
 			log.Infof("Selected %s as base image for %s", bestImage.Image, ctx.Build.Name)
 			ctx.BaseImage = bestImage.Image
 			ctx.SelectedArtifacts = make([]v1.Artifact, 0)
@@ -222,6 +222,7 @@ func listPublishedImages(context *builderContext) ([]v1.IntegrationKitStatus, er
 		}
 		images = append(images, kit.Status)
 	}
+
 	return images, nil
 }
 
@@ -248,6 +249,7 @@ func findBestImage(images []v1.IntegrationKitStatus, artifacts []v1.Artifact) (v
 			// otherwise, checksums would never match and we would always use the root image
 			if !strings.HasPrefix(artifact.Target, "dependencies/lib") {
 				nonLibArtifacts++
+
 				continue
 			}
 

@@ -72,7 +72,6 @@ func (action *monitorPodAction) Handle(ctx context.Context, build *v1.Build) (*v
 	//nolint:nestif
 	if pod == nil {
 		switch build.Status.Phase {
-
 		case v1.BuildPhasePending:
 			pod = newBuildPod(ctx, action.client, build)
 			// If the Builder Pod is in the Build namespace, we can set the ownership to it. If not (global operator mode)
@@ -98,12 +97,12 @@ func (action *monitorPodAction) Handle(ctx context.Context, build *v1.Build) (*v
 			build.Status.Phase = v1.BuildPhaseInterrupted
 			build.Status.Error = "Pod deleted"
 			monitorFinishedBuild(build)
+
 			return build, nil
 		}
 	}
 
 	switch pod.Status.Phase {
-
 	case corev1.PodPending, corev1.PodRunning:
 		// Pod remains in pending phase when init containers execute
 		if action.isPodScheduled(pod) {
@@ -198,6 +197,7 @@ func (action *monitorPodAction) isPodScheduled(pod *corev1.Pod) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -249,6 +249,7 @@ func (action *monitorPodAction) addTimeoutAnnotation(ctx context.Context, pod *c
 	if _, ok := pod.GetAnnotations()[timeoutAnnotation]; ok {
 		return nil
 	}
+
 	return action.patchPod(ctx, pod, func(p *corev1.Pod) {
 		if p.GetAnnotations() != nil {
 			p.GetAnnotations()[timeoutAnnotation] = time.String()
@@ -264,6 +265,7 @@ func (action *monitorPodAction) removeTimeoutAnnotation(ctx context.Context, pod
 	if _, ok := pod.GetAnnotations()[timeoutAnnotation]; !ok {
 		return nil
 	}
+
 	return action.patchPod(ctx, pod, func(p *corev1.Pod) {
 		delete(p.GetAnnotations(), timeoutAnnotation)
 	})
@@ -276,6 +278,7 @@ func (action *monitorPodAction) patchPod(ctx context.Context, pod *corev1.Pod, m
 		return err
 	}
 	*pod = *target
+
 	return nil
 }
 
@@ -337,7 +340,6 @@ func (action *monitorPodAction) setConditionsFromTerminationMessages(ctx context
 			buildStatus.SetCondition(containerConditionType, containerSucceeded, terminationReason, terminationMessage)
 		}
 	}
-
 }
 
 // we expect that the last task is any of the supported publishing task
@@ -345,7 +347,6 @@ func (action *monitorPodAction) setConditionsFromTerminationMessages(ctx context
 func publishTask(tasks []v1.Task) *v1.Task {
 	if len(tasks) > 0 {
 		return &tasks[len(tasks)-1]
-
 	}
 
 	return nil
@@ -376,10 +377,12 @@ func publishTaskDigest(tasks []v1.Task, cntStates []corev1.ContainerStatus) stri
 			return container.State.Terminated.Message
 		}
 	}
+
 	return ""
 }
 
 func operatorSupportedPublishingStrategy(tasks []v1.Task) bool {
 	taskName := publishTaskName(tasks)
+
 	return taskName == "jib" || taskName == "s2i"
 }

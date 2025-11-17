@@ -86,7 +86,6 @@ func (action *scheduleAction) toUpdatedCondition(ctx context.Context, build *v1.
 		}
 		b.Status.SetConditions(*condition)
 	})
-
 }
 
 func (action *scheduleAction) toUpdatedStatus(ctx context.Context, build *v1.Build, condition *v1.BuildCondition, phase v1.BuildPhase) error {
@@ -127,5 +126,6 @@ func (action *scheduleAction) patchBuildStatus(ctx context.Context, build *v1.Bu
 	event.NotifyBuildUpdated(ctx, action.client, action.recorder, build, target)
 
 	*build = *target
+
 	return nil
 }

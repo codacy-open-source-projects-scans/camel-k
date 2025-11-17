@@ -110,11 +110,12 @@ func CreateIntegrationFor(ctx context.Context, c client.Client, pipe *v1.Pipe) (
 	}
 
 	bindingContext := bindings.BindingContext{
-		Ctx:       ctx,
-		Client:    c,
-		Namespace: it.Namespace,
-		Profile:   profile,
-		Metadata:  it.Annotations,
+		Ctx:                ctx,
+		Client:             c,
+		Namespace:          it.Namespace,
+		Profile:            profile,
+		Metadata:           it.Annotations,
+		ServiceAccountName: it.Spec.ServiceAccountName,
 	}
 
 	from, err := bindings.Translate(bindingContext, endpointTypeSourceContext, pipe.Spec.Source)
@@ -253,7 +254,6 @@ func configureBinding(integration *v1.Integration, bindings ...*bindings.Binding
 
 			integration.Spec.AddConfigurationProperty(entry)
 		}
-
 	}
 
 	return nil
@@ -284,5 +284,6 @@ func determineTraitProfile(ctx context.Context, c client.Client, binding *v1.Pip
 			return plProfile, nil
 		}
 	}
+
 	return v1.DefaultTraitProfile, nil
 }
