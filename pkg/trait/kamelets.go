@@ -18,6 +18,7 @@ limitations under the License.
 package trait
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -201,7 +202,7 @@ func (t *kameletsTrait) calculateNamespaces(e *Environment, defaultNamespaces ..
 	}
 	if len(namespaces) > 0 {
 		if e.Integration.Spec.ServiceAccountName == "" {
-			return nil, fmt.Errorf("you must to use an authorized ServiceAccount to access cross-namespace resources kamelets. " +
+			return nil, errors.New("you must to use an authorized ServiceAccount to access cross-namespace resources kamelets. " +
 				"Set it in the Integration spec accordingly")
 		}
 		// verify an SA exists and it is authorized for Kamelets in that namespace
@@ -288,9 +289,9 @@ func (t *kameletsTrait) addKamelets(e *Environment) error {
 		cm.Annotations[kameletMountPointAnnotation] = kameletMountPoint
 		e.Resources.Add(cm)
 		if e.ApplicationProperties[KameletLocationProperty] == "" {
-			e.ApplicationProperties[KameletLocationProperty] = fmt.Sprintf("file:%s", kameletMountPoint)
+			e.ApplicationProperties[KameletLocationProperty] = "file:" + kameletMountPoint
 		} else {
-			e.ApplicationProperties[KameletLocationProperty] += fmt.Sprintf(",file:%s", kameletMountPoint)
+			e.ApplicationProperties[KameletLocationProperty] += ",file:" + kameletMountPoint
 		}
 	}
 	e.ApplicationProperties[KameletLocationProperty] += ",classpath:/kamelets"
@@ -315,7 +316,7 @@ func (t *kameletsTrait) addKameletAsSource(e *Environment, kamelet *v1.Kamelet) 
 		}
 		flowSource := v1.SourceSpec{
 			DataSpec: v1.DataSpec{
-				Name:    fmt.Sprintf("%s.yaml", kamelet.Name),
+				Name:    kamelet.Name + ".yaml",
 				Content: string(flowData),
 			},
 			Language: v1.LanguageYaml,
