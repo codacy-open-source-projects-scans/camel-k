@@ -23,6 +23,7 @@ import (
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -32,9 +33,8 @@ func newCmdDeploy(rootCmdOptions *RootCmdOptions) (*cobra.Command, *deployCmdOpt
 		RootCmdOptions: rootCmdOptions,
 	}
 	cmd := cobra.Command{
-		Use:     "deploy my-it",
-		Short:   "Deploy an Integration",
-		Long:    "Deploy an Integration that was previously built",
+		Use:     "deploy <name>",
+		Short:   "Deploy an Integration or Pipe that was previously built",
 		PreRunE: decode(&options, options.Flags),
 		RunE:    options.run,
 	}
@@ -48,7 +48,7 @@ type deployCmdOptions struct {
 
 func (o *deployCmdOptions) validate(_ *cobra.Command, args []string) error {
 	if len(args) != 1 {
-		return errors.New("deploy requires an Integration name argument")
+		return errors.New("deploy requires an Integration or Pipe name argument")
 	}
 
 	return nil
@@ -67,13 +67,16 @@ func (o *deployCmdOptions) run(cmd *cobra.Command, args []string) error {
 
 	existing, err := getIntegration(o.Context, c, name, o.Namespace)
 	if err != nil {
-		return fmt.Errorf("could not get Integration "+name+": %w", err)
+		return fmt.Errorf("could not get Integration or Pipe "+name+": %w", err)
 	}
 	if existing.Status.Phase != v1.IntegrationPhaseBuildComplete {
 		return fmt.Errorf("could not run an Integration in %s status", existing.Status.Phase)
 	}
 
 	integration := existing.DeepCopy()
+	// Set DeploymentTimestamp to track when deployment was initiated
+	now := metav1.Now().Rfc3339Copy()
+	integration.Status.DeploymentTimestamp = &now
 	integration.Status.Phase = v1.IntegrationPhaseDeploying
 
 	patch := ctrl.MergeFrom(existing)

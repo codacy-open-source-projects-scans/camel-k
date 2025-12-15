@@ -240,6 +240,9 @@ func (t *cronTrait) getCronJobFor(e *Environment) *batchv1.CronJob {
 		}
 	}
 
+	// Set the default container annotation for kubectl commands
+	annotations[defaultContainerAnnotation] = defaultContainerName
+
 	activeDeadline := defaultCronActiveDeadlineSeconds
 	if t.ActiveDeadlineSeconds != nil {
 		activeDeadline = *t.ActiveDeadlineSeconds

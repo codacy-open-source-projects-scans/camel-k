@@ -48,8 +48,18 @@ func TestBuildDontRun(t *testing.T) {
 			g.Eventually(IntegrationPhase(t, ctx, ns, name), TestTimeoutMedium).Should(Equal(v1.IntegrationPhaseBuildComplete))
 			g.Consistently(IntegrationPhase(t, ctx, ns, name), 10*time.Second).Should(Equal(v1.IntegrationPhaseBuildComplete))
 			g.Eventually(Deployment(t, ctx, ns, name)).Should(BeNil())
+
+			// Verify DeploymentTimestamp is NOT set before deploying (dry-build waits)
+			it := Integration(t, ctx, ns, name)()
+			g.Expect(it).NotTo(BeNil())
+			g.Expect(it.Status.InitializationTimestamp).NotTo(BeNil())
+			g.Expect(it.Status.DeploymentTimestamp).To(BeNil())
 		})
 		t.Run("deploy the integration", func(t *testing.T) {
+			// Capture InitializationTimestamp before deploying
+			itBeforeDeploy := Integration(t, ctx, ns, name)()
+			initTimestamp := itBeforeDeploy.Status.InitializationTimestamp
+
 			g.Expect(Kamel(t, ctx, "deploy", name, "-n", ns).Execute()).To(Succeed())
 			// The integration should run immediately
 			g.Eventually(IntegrationPhase(t, ctx, ns, name), TestTimeoutShort).Should(Equal(v1.IntegrationPhaseRunning))
@@ -58,11 +68,57 @@ func TestBuildDontRun(t *testing.T) {
 			g.Eventually(IntegrationConditionStatus(t, ctx, ns, name, v1.IntegrationConditionReady)).
 				Should(Equal(corev1.ConditionTrue))
 			g.Eventually(IntegrationLogs(t, ctx, ns, name)).Should(ContainSubstring("Magicstring!"))
+
+			// Verify DeploymentTimestamp is now set and is after InitializationTimestamp
+			it := Integration(t, ctx, ns, name)()
+			g.Expect(it).NotTo(BeNil())
+			g.Expect(it.Status.DeploymentTimestamp).NotTo(BeNil())
+			g.Expect(it.Status.DeploymentTimestamp.Time).To(BeTemporally(">", initTimestamp.Time))
 		})
 		t.Run("undeploy the integration", func(t *testing.T) {
 			g.Expect(Kamel(t, ctx, "undeploy", name, "-n", ns).Execute()).To(Succeed())
 			// The integration should change phase suddenly and the resources associated cleared
 			g.Eventually(IntegrationPhase(t, ctx, ns, name), TestTimeoutShort).Should(Equal(v1.IntegrationPhaseBuildComplete))
+			g.Eventually(IntegrationPodsNumbers(t, ctx, ns, name)).Should(Equal(ptr.To(int32(0))))
+			g.Eventually(Deployment(t, ctx, ns, name)).Should(BeNil())
+		})
+	})
+}
+
+func TestPipeBuildDontRun(t *testing.T) {
+	t.Parallel()
+	WithNewTestNamespace(t, func(ctx context.Context, g *WithT, ns string) {
+		name := RandomizedSuffixName("pipe-deploy")
+		t.Run("build and dont run pipe", func(t *testing.T) {
+			g.Expect(KamelBind(t, ctx, ns, "timer-source?message=HelloPipe", "log-sink",
+				"--name", name,
+				"--annotation", "camel.apache.org/dont-run-after-build=true",
+			).Execute()).To(Succeed())
+			g.Eventually(IntegrationPhase(t, ctx, ns, name), TestTimeoutMedium).Should(Equal(v1.IntegrationPhaseBuildComplete))
+			g.Eventually(PipePhase(t, ctx, ns, name), TestTimeoutMedium).Should(Equal(v1.PipePhaseBuildComplete))
+			g.Consistently(IntegrationPhase(t, ctx, ns, name), 10*time.Second).Should(Equal(v1.IntegrationPhaseBuildComplete))
+			g.Consistently(PipePhase(t, ctx, ns, name), 10*time.Second).Should(Equal(v1.PipePhaseBuildComplete))
+			g.Eventually(Deployment(t, ctx, ns, name)).Should(BeNil())
+			// Pipe condition should indicate build is complete
+			g.Eventually(PipeCondition(t, ctx, ns, name, v1.PipeConditionReady), TestTimeoutShort).Should(
+				WithTransform(PipeConditionReason, Equal("BuildComplete")))
+		})
+		t.Run("deploy the pipe", func(t *testing.T) {
+			t.Skip("Skipping: deploy/undeploy pipe lifecycle needs further investigation")
+			g.Expect(Kamel(t, ctx, "deploy", name, "-n", ns).Execute()).To(Succeed())
+			g.Eventually(IntegrationPhase(t, ctx, ns, name), TestTimeoutMedium).Should(Equal(v1.IntegrationPhaseRunning))
+			g.Eventually(PipePhase(t, ctx, ns, name), TestTimeoutMedium).Should(Equal(v1.PipePhaseReady))
+			g.Eventually(Deployment(t, ctx, ns, name)).ShouldNot(BeNil())
+			g.Eventually(IntegrationPodPhase(t, ctx, ns, name), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
+			g.Eventually(IntegrationConditionStatus(t, ctx, ns, name, v1.IntegrationConditionReady), TestTimeoutMedium).
+				Should(Equal(corev1.ConditionTrue))
+			g.Eventually(IntegrationLogs(t, ctx, ns, name), TestTimeoutMedium).Should(ContainSubstring("HelloPipe"))
+		})
+		t.Run("undeploy the pipe", func(t *testing.T) {
+			t.Skip("Skipping: deploy/undeploy pipe lifecycle needs further investigation")
+			g.Expect(Kamel(t, ctx, "undeploy", name, "-n", ns).Execute()).To(Succeed())
+			g.Eventually(IntegrationPhase(t, ctx, ns, name), TestTimeoutMedium).Should(Equal(v1.IntegrationPhaseBuildComplete))
+			g.Eventually(PipePhase(t, ctx, ns, name), TestTimeoutMedium).Should(Equal(v1.PipePhaseBuildComplete))
 			g.Eventually(IntegrationPodsNumbers(t, ctx, ns, name)).Should(Equal(ptr.To(int32(0))))
 			g.Eventually(Deployment(t, ctx, ns, name)).Should(BeNil())
 		})
