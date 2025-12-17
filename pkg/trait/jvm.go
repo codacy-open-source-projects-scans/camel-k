@@ -158,6 +158,14 @@ func (t *jvmTrait) Apply(e *Environment) error {
 		args = append(args, httpProxyArgs...)
 	}
 
+	caCertArgs, err := t.configureCaCert(e)
+	if err != nil {
+		return err
+	}
+	if caCertArgs != nil {
+		args = append(args, caCertArgs...)
+	}
+
 	return t.feedContainer(container, args, e)
 }
 
@@ -368,4 +376,33 @@ func getLegacyCamelQuarkusDependenciesPaths() *sets.Set {
 	s.Add("dependencies/quarkus/*")
 
 	return s
+}
+
+// configureCACert configures the CA certificate truststore and returns the JVM arguments.
+func (t *jvmTrait) configureCaCert(e *Environment) ([]string, error) {
+	if t.CACert == "" {
+		return nil, nil
+	}
+
+	_, _, err := parseSecretRef(t.CACert)
+	if err != nil {
+		return nil, err
+	}
+
+	secretName, secretKey, err := t.getTrustStorePasswordSecretRef()
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure truststore password: %w", err)
+	}
+
+	// Inject password
+	container := e.GetIntegrationContainer()
+	if container != nil {
+		envVar := getTrustStorePasswordEnvVar(secretName, secretKey)
+		container.Env = append(container.Env, envVar)
+	}
+
+	return []string{
+		"-Djavax.net.ssl.trustStore=" + t.getTrustStorePath(),
+		fmt.Sprintf("-Djavax.net.ssl.trustStorePassword=$(%s)", truststorePasswordEnvVar),
+	}, nil
 }

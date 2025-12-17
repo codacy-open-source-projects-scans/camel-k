@@ -42,6 +42,7 @@ type containerTask struct {
 	image     string
 	command   string
 	isSidecar bool
+	env       []corev1.EnvVar
 }
 
 type initContainersTrait struct {
@@ -90,6 +91,33 @@ func (t *initContainersTrait) Configure(e *Environment) (bool, *TraitCondition, 
 			}
 			t.tasks = append(t.tasks, agentDownloadTask)
 		}
+		// Set the CA cert truststore init container if configured
+		if ok && jvm.hasCACert() {
+			_, secretKey, err := parseSecretRef(jvm.CACert)
+			if err != nil {
+				return false, nil, err
+			}
+			if secretKey == "" {
+				secretKey = "ca.crt"
+			}
+
+			secretName, secretKey2, err := jvm.getTrustStorePasswordSecretRef()
+			if err != nil {
+				return false, nil, err
+			}
+
+			keytoolCmd := fmt.Sprintf(
+				"keytool -importcert -noprompt -alias custom-ca -storepass:env %s -keystore %s -file /etc/secrets/cacert/%s",
+				truststorePasswordEnvVar, jvm.getTrustStorePath(), secretKey,
+			)
+			caCertTask := containerTask{
+				name:    "generate-truststore",
+				image:   defaults.BaseImage(),
+				command: keytoolCmd,
+				env:     []corev1.EnvVar{getTrustStorePasswordEnvVar(secretName, secretKey2)},
+			}
+			t.tasks = append(t.tasks, caCertTask)
+		}
 	}
 
 	return len(t.tasks) > 0, nil, nil
@@ -135,6 +163,7 @@ func (t *initContainersTrait) configureContainers(containers *[]corev1.Container
 			Name:    task.name,
 			Image:   task.image,
 			Command: splitContainerCommand(task.command),
+			Env:     task.env,
 		}
 		if task.isSidecar {
 			initCont.RestartPolicy = ptr.To(corev1.ContainerRestartPolicyAlways)

@@ -153,7 +153,7 @@ func (t *mountTrait) configureVolumesAndMounts(
 	for _, c := range t.Configs {
 		if conf, parseErr := utilResource.ParseConfig(c); parseErr == nil {
 			// Let Camel parse these resources as properties
-			destFilePath := t.mountResource(vols, mnts, conf)
+			destFilePath := t.mountResource(vols, mnts, icnts, conf)
 			e.appendCloudPropertiesLocation(destFilePath)
 		} else {
 			return parseErr
@@ -161,7 +161,7 @@ func (t *mountTrait) configureVolumesAndMounts(
 	}
 	for _, r := range t.Resources {
 		if res, parseErr := utilResource.ParseResource(r); parseErr == nil {
-			t.mountResource(vols, mnts, res)
+			t.mountResource(vols, mnts, icnts, res)
 		} else {
 			return parseErr
 		}
@@ -190,6 +190,7 @@ func (t *mountTrait) configureVolumesAndMounts(
 	}
 	// Mount the agent volume if any agent exists
 	trait := e.Catalog.GetTrait(jvmTraitID)
+	//nolint:nestif
 	if trait != nil {
 		jvm, ok := trait.(*jvmTrait)
 		if ok && jvm.hasJavaAgents() {
@@ -201,6 +202,56 @@ func (t *mountTrait) configureVolumesAndMounts(
 			*mnts = append(*mnts, *volumeMount)
 			for i := range *icnts {
 				(*icnts)[i].VolumeMounts = append((*icnts)[i].VolumeMounts, *volumeMount)
+			}
+		}
+		// Mount CA cert volumes if configured
+		if ok && jvm.hasCACert() {
+			secretName, _, err := parseSecretRef(jvm.CACert)
+			if err != nil {
+				return err
+			}
+			mountPath := jvm.getCACertMountPath()
+
+			// Secret volume for CA cert
+			secretVolume := corev1.Volume{
+				Name: caCertSecretVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: secretName,
+					},
+				},
+			}
+			*vols = append(*vols, secretVolume)
+
+			// EmptyDir volume for truststore output
+			trustStoreVolume := corev1.Volume{
+				Name: caCertVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
+				},
+			}
+			*vols = append(*vols, trustStoreVolume)
+
+			// Mount truststore to main container
+			*mnts = append(*mnts, corev1.VolumeMount{
+				Name:      caCertVolumeName,
+				MountPath: mountPath,
+				ReadOnly:  true,
+			})
+
+			// Mount volumes to init containers for truststore generation
+			for i := range *icnts {
+				(*icnts)[i].VolumeMounts = append((*icnts)[i].VolumeMounts,
+					corev1.VolumeMount{
+						Name:      caCertSecretVolumeName,
+						MountPath: "/etc/secrets/cacert",
+						ReadOnly:  true,
+					},
+					corev1.VolumeMount{
+						Name:      caCertVolumeName,
+						MountPath: mountPath,
+					},
+				)
 			}
 		}
 	}
@@ -284,7 +335,7 @@ func (t *mountTrait) configureCamelVolumesAndMounts(e *Environment, vols *[]core
 }
 
 // mountResource add the resource to volumes and mounts and return the final path where the resource is mounted.
-func (t *mountTrait) mountResource(vols *[]corev1.Volume, mnts *[]corev1.VolumeMount, conf *utilResource.Config) string {
+func (t *mountTrait) mountResource(vols *[]corev1.Volume, mnts *[]corev1.VolumeMount, icnts *[]corev1.Container, conf *utilResource.Config) string {
 	refName := sanitizeVolumeName(conf.Name(), vols)
 	dstDir := conf.DestinationPath()
 	dstFile := ""
@@ -303,6 +354,10 @@ func (t *mountTrait) mountResource(vols *[]corev1.Volume, mnts *[]corev1.VolumeM
 
 	*vols = append(*vols, *vol)
 	*mnts = append(*mnts, *mnt)
+
+	for i := range *icnts {
+		(*icnts)[i].VolumeMounts = append((*icnts)[i].VolumeMounts, *mnt)
+	}
 
 	return mnt.MountPath
 }

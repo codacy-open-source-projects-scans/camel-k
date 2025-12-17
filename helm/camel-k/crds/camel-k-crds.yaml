@@ -4721,6 +4721,22 @@ spec:
                         items:
                           type: string
                         type: array
+                      caCert:
+                        description: |-
+                          The secret should contain PEM-encoded certificates.
+                          Example: "secret:my-ca-certs" or "secret:my-ca-certs/custom-ca.crt"
+                        type: string
+                      caCertMountPath:
+                        description: |-
+                          The path where the generated truststore will be mounted
+                          Default: "/etc/camel/conf.d/_truststore"
+                        type: string
+                      caCertPassword:
+                        description: |-
+                          Required when caCert is set. A secret reference containing the truststore password.
+                          If the secret key is not specified, "password" is used as the default key.
+                          Example: "secret:my-truststore-password" or "secret:my-truststore-password/mykey"
+                        type: string
                       classpath:
                         description: Additional JVM classpath (use `Linux` classpath
                           separator)
@@ -4791,6 +4807,19 @@ spec:
                   keda:
                     description: The configuration of Keda trait
                     properties:
+                      auto:
+                        description: Automatically discover KEDA triggers from Camel
+                          component URIs.
+                        type: boolean
+                      autoMetadata:
+                        additionalProperties:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        description: |-
+                          Additional metadata to merge into auto-discovered triggers. Keys are trigger types (e.g., "kafka"),
+                          values are maps of metadata key-value pairs to merge (e.g., {"lagThreshold": "10"}).
+                        type: object
                       configuration:
                         description: |-
                           Legacy trait configuration parameters.
@@ -7114,6 +7143,22 @@ spec:
                         items:
                           type: string
                         type: array
+                      caCert:
+                        description: |-
+                          The secret should contain PEM-encoded certificates.
+                          Example: "secret:my-ca-certs" or "secret:my-ca-certs/custom-ca.crt"
+                        type: string
+                      caCertMountPath:
+                        description: |-
+                          The path where the generated truststore will be mounted
+                          Default: "/etc/camel/conf.d/_truststore"
+                        type: string
+                      caCertPassword:
+                        description: |-
+                          Required when caCert is set. A secret reference containing the truststore password.
+                          If the secret key is not specified, "password" is used as the default key.
+                          Example: "secret:my-truststore-password" or "secret:my-truststore-password/mykey"
+                        type: string
                       classpath:
                         description: Additional JVM classpath (use `Linux` classpath
                           separator)
@@ -7184,6 +7229,19 @@ spec:
                   keda:
                     description: The configuration of Keda trait
                     properties:
+                      auto:
+                        description: Automatically discover KEDA triggers from Camel
+                          component URIs.
+                        type: boolean
+                      autoMetadata:
+                        additionalProperties:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        description: |-
+                          Additional metadata to merge into auto-discovered triggers. Keys are trigger types (e.g., "kafka"),
+                          values are maps of metadata key-value pairs to merge (e.g., {"lagThreshold": "10"}).
+                        type: object
                       configuration:
                         description: |-
                           Legacy trait configuration parameters.
@@ -9409,6 +9467,22 @@ spec:
                         items:
                           type: string
                         type: array
+                      caCert:
+                        description: |-
+                          The secret should contain PEM-encoded certificates.
+                          Example: "secret:my-ca-certs" or "secret:my-ca-certs/custom-ca.crt"
+                        type: string
+                      caCertMountPath:
+                        description: |-
+                          The path where the generated truststore will be mounted
+                          Default: "/etc/camel/conf.d/_truststore"
+                        type: string
+                      caCertPassword:
+                        description: |-
+                          Required when caCert is set. A secret reference containing the truststore password.
+                          If the secret key is not specified, "password" is used as the default key.
+                          Example: "secret:my-truststore-password" or "secret:my-truststore-password/mykey"
+                        type: string
                       classpath:
                         description: Additional JVM classpath (use `Linux` classpath
                           separator)
@@ -9479,6 +9553,19 @@ spec:
                   keda:
                     description: The configuration of Keda trait
                     properties:
+                      auto:
+                        description: Automatically discover KEDA triggers from Camel
+                          component URIs.
+                        type: boolean
+                      autoMetadata:
+                        additionalProperties:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        description: |-
+                          Additional metadata to merge into auto-discovered triggers. Keys are trigger types (e.g., "kafka"),
+                          values are maps of metadata key-value pairs to merge (e.g., {"lagThreshold": "10"}).
+                        type: object
                       configuration:
                         description: |-
                           Legacy trait configuration parameters.
@@ -11681,6 +11768,22 @@ spec:
                         items:
                           type: string
                         type: array
+                      caCert:
+                        description: |-
+                          The secret should contain PEM-encoded certificates.
+                          Example: "secret:my-ca-certs" or "secret:my-ca-certs/custom-ca.crt"
+                        type: string
+                      caCertMountPath:
+                        description: |-
+                          The path where the generated truststore will be mounted
+                          Default: "/etc/camel/conf.d/_truststore"
+                        type: string
+                      caCertPassword:
+                        description: |-
+                          Required when caCert is set. A secret reference containing the truststore password.
+                          If the secret key is not specified, "password" is used as the default key.
+                          Example: "secret:my-truststore-password" or "secret:my-truststore-password/mykey"
+                        type: string
                       classpath:
                         description: Additional JVM classpath (use `Linux` classpath
                           separator)
@@ -11751,6 +11854,19 @@ spec:
                   keda:
                     description: The configuration of Keda trait
                     properties:
+                      auto:
+                        description: Automatically discover KEDA triggers from Camel
+                          component URIs.
+                        type: boolean
+                      autoMetadata:
+                        additionalProperties:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        description: |-
+                          Additional metadata to merge into auto-discovered triggers. Keys are trigger types (e.g., "kafka"),
+                          values are maps of metadata key-value pairs to merge (e.g., {"lagThreshold": "10"}).
+                        type: object
                       configuration:
                         description: |-
                           Legacy trait configuration parameters.
@@ -20787,6 +20903,22 @@ spec:
                         items:
                           type: string
                         type: array
+                      caCert:
+                        description: |-
+                          The secret should contain PEM-encoded certificates.
+                          Example: "secret:my-ca-certs" or "secret:my-ca-certs/custom-ca.crt"
+                        type: string
+                      caCertMountPath:
+                        description: |-
+                          The path where the generated truststore will be mounted
+                          Default: "/etc/camel/conf.d/_truststore"
+                        type: string
+                      caCertPassword:
+                        description: |-
+                          Required when caCert is set. A secret reference containing the truststore password.
+                          If the secret key is not specified, "password" is used as the default key.
+                          Example: "secret:my-truststore-password" or "secret:my-truststore-password/mykey"
+                        type: string
                       classpath:
                         description: Additional JVM classpath (use `Linux` classpath
                           separator)
@@ -20857,6 +20989,19 @@ spec:
                   keda:
                     description: The configuration of Keda trait
                     properties:
+                      auto:
+                        description: Automatically discover KEDA triggers from Camel
+                          component URIs.
+                        type: boolean
+                      autoMetadata:
+                        additionalProperties:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        description: |-
+                          Additional metadata to merge into auto-discovered triggers. Keys are trigger types (e.g., "kafka"),
+                          values are maps of metadata key-value pairs to merge (e.g., {"lagThreshold": "10"}).
+                        type: object
                       configuration:
                         description: |-
                           Legacy trait configuration parameters.
@@ -23013,6 +23158,22 @@ spec:
                         items:
                           type: string
                         type: array
+                      caCert:
+                        description: |-
+                          The secret should contain PEM-encoded certificates.
+                          Example: "secret:my-ca-certs" or "secret:my-ca-certs/custom-ca.crt"
+                        type: string
+                      caCertMountPath:
+                        description: |-
+                          The path where the generated truststore will be mounted
+                          Default: "/etc/camel/conf.d/_truststore"
+                        type: string
+                      caCertPassword:
+                        description: |-
+                          Required when caCert is set. A secret reference containing the truststore password.
+                          If the secret key is not specified, "password" is used as the default key.
+                          Example: "secret:my-truststore-password" or "secret:my-truststore-password/mykey"
+                        type: string
                       classpath:
                         description: Additional JVM classpath (use `Linux` classpath
                           separator)
@@ -23083,6 +23244,19 @@ spec:
                   keda:
                     description: The configuration of Keda trait
                     properties:
+                      auto:
+                        description: Automatically discover KEDA triggers from Camel
+                          component URIs.
+                        type: boolean
+                      autoMetadata:
+                        additionalProperties:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        description: |-
+                          Additional metadata to merge into auto-discovered triggers. Keys are trigger types (e.g., "kafka"),
+                          values are maps of metadata key-value pairs to merge (e.g., {"lagThreshold": "10"}).
+                        type: object
                       configuration:
                         description: |-
                           Legacy trait configuration parameters.
@@ -33481,6 +33655,22 @@ spec:
                             items:
                               type: string
                             type: array
+                          caCert:
+                            description: |-
+                              The secret should contain PEM-encoded certificates.
+                              Example: "secret:my-ca-certs" or "secret:my-ca-certs/custom-ca.crt"
+                            type: string
+                          caCertMountPath:
+                            description: |-
+                              The path where the generated truststore will be mounted
+                              Default: "/etc/camel/conf.d/_truststore"
+                            type: string
+                          caCertPassword:
+                            description: |-
+                              Required when caCert is set. A secret reference containing the truststore password.
+                              If the secret key is not specified, "password" is used as the default key.
+                              Example: "secret:my-truststore-password" or "secret:my-truststore-password/mykey"
+                            type: string
                           classpath:
                             description: Additional JVM classpath (use `Linux` classpath
                               separator)
@@ -33551,6 +33741,19 @@ spec:
                       keda:
                         description: The configuration of Keda trait
                         properties:
+                          auto:
+                            description: Automatically discover KEDA triggers from
+                              Camel component URIs.
+                            type: boolean
+                          autoMetadata:
+                            additionalProperties:
+                              additionalProperties:
+                                type: string
+                              type: object
+                            description: |-
+                              Additional metadata to merge into auto-discovered triggers. Keys are trigger types (e.g., "kafka"),
+                              values are maps of metadata key-value pairs to merge (e.g., {"lagThreshold": "10"}).
+                            type: object
                           configuration:
                             description: |-
                               Legacy trait configuration parameters.
@@ -35639,6 +35842,22 @@ spec:
                         items:
                           type: string
                         type: array
+                      caCert:
+                        description: |-
+                          The secret should contain PEM-encoded certificates.
+                          Example: "secret:my-ca-certs" or "secret:my-ca-certs/custom-ca.crt"
+                        type: string
+                      caCertMountPath:
+                        description: |-
+                          The path where the generated truststore will be mounted
+                          Default: "/etc/camel/conf.d/_truststore"
+                        type: string
+                      caCertPassword:
+                        description: |-
+                          Required when caCert is set. A secret reference containing the truststore password.
+                          If the secret key is not specified, "password" is used as the default key.
+                          Example: "secret:my-truststore-password" or "secret:my-truststore-password/mykey"
+                        type: string
                       classpath:
                         description: Additional JVM classpath (use `Linux` classpath
                           separator)
@@ -35709,6 +35928,19 @@ spec:
                   keda:
                     description: The configuration of Keda trait
                     properties:
+                      auto:
+                        description: Automatically discover KEDA triggers from Camel
+                          component URIs.
+                        type: boolean
+                      autoMetadata:
+                        additionalProperties:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        description: |-
+                          Additional metadata to merge into auto-discovered triggers. Keys are trigger types (e.g., "kafka"),
+                          values are maps of metadata key-value pairs to merge (e.g., {"lagThreshold": "10"}).
+                        type: object
                       configuration:
                         description: |-
                           Legacy trait configuration parameters.

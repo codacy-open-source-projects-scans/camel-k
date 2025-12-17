@@ -7796,6 +7796,31 @@ The Jar dependency which will run the application. Leave it empty for managed In
 
 A list of JVM agents to download and execute with format `<agent-name>;<agent-url>[;<jvm-agent-options>]`.
 
+|`caCert` +
+string
+|
+
+
+The secret should contain PEM-encoded certificates.
+Example: "secret:my-ca-certs" or "secret:my-ca-certs/custom-ca.crt"
+
+|`caCertMountPath` +
+string
+|
+
+
+The path where the generated truststore will be mounted
+Default: "/etc/camel/conf.d/_truststore"
+
+|`caCertPassword` +
+string
+|
+
+
+Required when caCert is set. A secret reference containing the truststore password.
+If the secret key is not specified, "password" is used as the default key.
+Example: "secret:my-truststore-password" or "secret:my-truststore-password/mykey"
+
 
 |===
 
@@ -8058,6 +8083,21 @@ Maximum number of replicas.
 Definition of triggers according to the KEDA format. Each trigger must contain `type` field corresponding
 to the name of a KEDA autoscaler and a key/value map named `metadata` containing specific trigger options
 and optionally a mapping of secrets, used by Keda operator to poll resources according to the autoscaler type.
+
+|`auto` +
+bool
+|
+
+
+Automatically discover KEDA triggers from Camel component URIs.
+
+|`autoMetadata` +
+map[string]map[string]string
+|
+
+
+Additional metadata to merge into auto-discovered triggers. Keys are trigger types (e.g., "kafka"),
+values are maps of metadata key-value pairs to merge (e.g., {"lagThreshold": "10"}).
 
 
 |===
