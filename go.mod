@@ -1,6 +1,6 @@
 module github.com/apache/camel-k/v2
 
-go 1.25.5
+go 1.25.6
 
 require (
 	dario.cat/mergo v1.0.2
@@ -16,7 +16,7 @@ require (
 	github.com/jpillora/backoff v1.0.0
 	github.com/magiconair/properties v1.8.10
 	github.com/mattn/go-shellwords v1.0.12
-	github.com/onsi/gomega v1.39.0
+	github.com/onsi/gomega v1.39.1
 	// go get github.com/openshift/api@release-4.21
 	github.com/openshift/api v0.0.0-20250820105013-6282350d0c39
 	github.com/operator-framework/api v0.38.0
