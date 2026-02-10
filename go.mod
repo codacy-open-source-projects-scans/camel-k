@@ -34,7 +34,7 @@ require (
 	go.uber.org/automaxprocs v1.6.0
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.1
-	golang.org/x/oauth2 v0.34.0
+	golang.org/x/oauth2 v0.35.0
 	golang.org/x/sync v0.19.0
 	golang.org/x/term v0.39.0
 	golang.org/x/text v0.33.0
@@ -51,7 +51,7 @@ require (
 	knative.dev/pkg v0.0.0-20260120122510-4a022ed9999a
 	knative.dev/serving v0.48.0
 	sigs.k8s.io/controller-runtime v0.22.4
-	sigs.k8s.io/structured-merge-diff/v6 v6.3.1
+	sigs.k8s.io/structured-merge-diff/v6 v6.3.2
 )
 
 require (
