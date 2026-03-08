@@ -139,6 +139,10 @@ spec:
                   commit:
                     description: the git commit (full SHA) to check out
                     type: string
+                  path:
+                    description: the path you want to use for your project. If provided,
+                      it must be an existing directory on the Git repository.
+                    type: string
                   secret:
                     description: the Kubernetes secret where token is stored
                     type: string
@@ -9510,6 +9514,11 @@ spec:
                 x-kubernetes-map-type: atomic
               jar:
                 description: the Java jar dependency to execute (if available)
+                type: string
+              lastBuildTimestamp:
+                description: the timestamp representing the last time when this integration
+                  was built.
+                format: date-time
                 type: string
               lastDeploymentTimestamp:
                 description: the timestamp representing the last time when this integration

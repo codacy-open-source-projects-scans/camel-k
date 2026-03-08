@@ -2288,6 +2288,13 @@ string
 
 the git commit (full SHA) to check out
 
+|`path` +
+string
+|
+
+
+the path you want to use for your project. If provided, it must be an existing directory on the Git repository.
+
 
 |===
 
@@ -3727,6 +3734,13 @@ the timestamp representing the last time when this integration was initialized.
 
 
 the timestamp representing the last time when this integration was deployed.
+
+|`lastBuildTimestamp` +
+*https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.35/#time-v1-meta[Kubernetes meta/v1.Time]*
+|
+
+
+the timestamp representing the last time when this integration was built.
 
 
 |===
