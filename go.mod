@@ -35,7 +35,7 @@ require (
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.1
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sync v0.19.0
+	golang.org/x/sync v0.20.0
 	golang.org/x/term v0.40.0
 	golang.org/x/text v0.34.0
 	golang.org/x/time v0.15.0
@@ -45,7 +45,7 @@ require (
 	k8s.io/cli-runtime v0.35.0
 	k8s.io/client-go v0.35.1
 	k8s.io/gengo v0.0.0-20251215205346-5ee0d033ba5b
-	k8s.io/klog/v2 v2.130.1
+	k8s.io/klog/v2 v2.140.0
 	k8s.io/utils v0.0.0-20260108192941-914a6e750570
 	knative.dev/eventing v0.48.0
 	knative.dev/pkg v0.0.0-20260120122510-4a022ed9999a
