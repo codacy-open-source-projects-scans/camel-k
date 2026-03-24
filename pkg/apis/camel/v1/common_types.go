@@ -35,6 +35,8 @@ const (
 	// IntegrationProfileAnnotation integration profile id annotation label.
 	IntegrationProfileAnnotation = "camel.apache.org/integration-profile.id"
 	// IntegrationProfileNamespaceAnnotation integration profile id annotation label.
+	//
+	// Deprecated: won't be supported in future releases.
 	IntegrationProfileNamespaceAnnotation = "camel.apache.org/integration-profile.namespace"
 	// IntegrationDontRunAfterBuildAnnotation -- .
 	IntegrationDontRunAfterBuildAnnotation = "camel.apache.org/dont-run-after-build"
@@ -208,6 +210,8 @@ type Traits struct {
 	//
 	// Deprecated: no longer in use.
 	ErrorHandler *trait.ErrorHandlerTrait `json:"error-handler,omitempty" property:"error-handler"`
+	// The configuration of Istio trait
+	Gateway *trait.GatewayTrait `json:"gateway,omitempty" property:"gateway"`
 	// The configuration of GC trait
 	GC *trait.GCTrait `json:"gc,omitempty" property:"gc"`
 	// The configuration of GitOps trait

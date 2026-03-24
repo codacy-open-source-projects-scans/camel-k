@@ -3346,6 +3346,8 @@ IntegrationProfileConditionType defines the type of condition.
 
 IntegrationProfileKameletSpec define the behavior for all the Kamelets controller by the IntegrationProfile.
 
+Deprecated: to be removed in future versions.
+
 [cols="2,2a",options="header"]
 |===
 |Field
@@ -3406,6 +3408,8 @@ list of traits to be executed for all the Integration/IntegrationKits built from
 
 
 configuration to be executed to all Kamelets controlled by this IntegrationProfile
+
+Deprecated: to be removed in future versions.
 
 
 |===
@@ -5123,6 +5127,8 @@ string
 
 PodSpec defines a group of Kubernetes resources.
 
+Deprecated: to be removed in future versions.
+
 [cols="2,2a",options="header"]
 |===
 |Field
@@ -5223,6 +5229,8 @@ PodSecurityContext
 * <<#_camel_apache_org_v1_IntegrationSpec, IntegrationSpec>>
 
 PodSpecTemplate represent a template used to deploy an Integration `Pod`.
+
+Deprecated: to be removed in future versions.
 
 [cols="2,2a",options="header"]
 |===
@@ -6042,6 +6050,13 @@ The configuration of Environment trait
 The configuration of Error Handler trait.
 
 Deprecated: no longer in use.
+
+|`gateway` +
+*xref:#_camel_apache_org_v1_trait_GatewayTrait[GatewayTrait]*
+|
+
+
+The configuration of Istio trait
 
 |`gc` +
 *xref:#_camel_apache_org_v1_trait_GCTrait[GCTrait]*
@@ -7323,6 +7338,49 @@ The GC Trait garbage-collects all resources that are no longer necessary upon in
 Discovery client cache to be used, either `disabled`, `disk` or `memory` (default `memory`).
 
 Deprecated: no longer in use.
+
+
+|===
+
+[#_camel_apache_org_v1_trait_GatewayTrait]
+=== GatewayTrait
+
+*Appears on:*
+
+* <<#_camel_apache_org_v1_Traits, Traits>>
+
+The Gateway trait can be used to expose the service associated with the Integration
+to the outside world with a Kubernetes Gateway API. The trait is in charge to automatically discover associate the
+Integration Service generated with a Gateway and an HTTPRoute resource (HTTP/HTTPS protocol only supported).
+
+NOTE: if any other protocol is required, please create a request in order to develop it.
+
+
+[cols="2,2a",options="header"]
+|===
+|Field
+|Description
+
+|`Trait` +
+*xref:#_camel_apache_org_v1_trait_Trait[Trait]*
+|(Members of `Trait` are embedded into this type.)
+
+
+
+
+|`className` +
+string
+|
+
+
+The class name to use for the gateway configuration.
+
+|`listeners` +
+[]string
+|
+
+
+The listeners in the format "port;protocol" (default, "8080;HTTP").
 
 
 |===
@@ -9685,6 +9743,7 @@ The list of taints to tolerate, in the form `Key[=Value]:Effect[:Seconds]`
 * <<#_camel_apache_org_v1_trait_AffinityTrait, AffinityTrait>>
 * <<#_camel_apache_org_v1_trait_CronTrait, CronTrait>>
 * <<#_camel_apache_org_v1_trait_GCTrait, GCTrait>>
+* <<#_camel_apache_org_v1_trait_GatewayTrait, GatewayTrait>>
 * <<#_camel_apache_org_v1_trait_GitOpsTrait, GitOpsTrait>>
 * <<#_camel_apache_org_v1_trait_HealthTrait, HealthTrait>>
 * <<#_camel_apache_org_v1_trait_IngressTrait, IngressTrait>>
