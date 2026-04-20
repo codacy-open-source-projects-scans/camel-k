@@ -22,11 +22,51 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 )
+
+func TestActions(t *testing.T) {
+	base := []Action{
+		NewPlatformSetupAction(),
+		NewInitializeAction(),
+		NewBuildAction(),
+		newBuildKitAction(),
+		NewBuildCompleteAction(),
+	}
+	reconciler := reconcileIntegration{
+		syntheticActions: append(append([]Action{}, base...), NewMonitorSyntheticAction()),
+		baseActions:      append(append([]Action{}, base...), NewMonitorAction(), NewMonitorUnknownAction()),
+	}
+
+	t.Run("non-synthetic", func(t *testing.T) {
+		actions := reconciler.baseActions
+		require.Len(t, actions, 7)
+
+		assert.IsType(t, &platformSetupAction{}, actions[0])
+		assert.IsType(t, &initializeAction{}, actions[1])
+		assert.IsType(t, &buildAction{}, actions[2])
+		assert.IsType(t, &buildKitAction{}, actions[3])
+		assert.IsType(t, &buildCompleteAction{}, actions[4])
+		assert.IsType(t, &monitorAction{}, actions[5])
+		assert.IsType(t, &monitorUnknownAction{}, actions[6])
+	})
+
+	t.Run("synthetic", func(t *testing.T) {
+		actions := reconciler.syntheticActions
+		require.Len(t, actions, 6)
+
+		assert.IsType(t, &platformSetupAction{}, actions[0])
+		assert.IsType(t, &initializeAction{}, actions[1])
+		assert.IsType(t, &buildAction{}, actions[2])
+		assert.IsType(t, &buildKitAction{}, actions[3])
+		assert.IsType(t, &buildCompleteAction{}, actions[4])
+		assert.IsType(t, &monitorSyntheticAction{}, actions[5])
+	})
+}
 
 func TestIsIntegrationUpdated(t *testing.T) {
 	now := metav1.Now()

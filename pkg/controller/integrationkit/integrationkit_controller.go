@@ -60,6 +60,12 @@ func newReconciler(mgr manager.Manager, c client.Client) reconcile.Reconciler {
 			client:   c,
 			scheme:   mgr.GetScheme(),
 			recorder: mgr.GetEventRecorder("camel-k-integration-kit-controller"),
+			actions: []Action{
+				NewInitializeAction(),
+				NewBuildAction(),
+				NewMonitorAction(),
+				NewErrorAction(),
+			},
 		},
 		schema.GroupVersionKind{
 			Group:   v1.SchemeGroupVersion.Group,
@@ -183,6 +189,7 @@ type reconcileIntegrationKit struct {
 	client   client.Client
 	scheme   *runtime.Scheme
 	recorder events.EventRecorder
+	actions  []Action
 }
 
 // Reconcile reads that state of the cluster for a IntegrationKit object and makes changes based on the state read
@@ -263,16 +270,9 @@ func (r *reconcileIntegrationKit) Reconcile(ctx context.Context, request reconci
 		return reconcile.Result{}, err
 	}
 
-	actions := []Action{
-		NewInitializeAction(),
-		NewBuildAction(),
-		NewMonitorAction(),
-		NewErrorAction(),
-	}
-
 	targetPhase := instance.Status.Phase
 
-	for _, a := range actions {
+	for _, a := range r.actions {
 		a.InjectClient(r.client)
 		a.InjectLogger(targetLog)
 

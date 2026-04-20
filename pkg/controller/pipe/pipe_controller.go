@@ -56,6 +56,10 @@ func newReconciler(mgr manager.Manager, c client.Client) reconcile.Reconciler {
 			client:   c,
 			scheme:   mgr.GetScheme(),
 			recorder: mgr.GetEventRecorder("camel-k-pipe-controller"),
+			actions: []Action{
+				NewInitializeAction(),
+				NewMonitorAction(),
+			},
 		},
 		schema.GroupVersionKind{
 			Group:   v1.SchemeGroupVersion.Group,
@@ -135,6 +139,7 @@ type ReconcilePipe struct {
 	client   client.Client
 	scheme   *runtime.Scheme
 	recorder events.EventRecorder
+	actions  []Action
 }
 
 // Reconcile reads that state of the cluster for a Pipe object and makes changes based
@@ -178,17 +183,12 @@ func (r *ReconcilePipe) Reconcile(ctx context.Context, request reconcile.Request
 		return reconcile.Result{}, nil
 	}
 
-	actions := []Action{
-		NewInitializeAction(),
-		NewMonitorAction(),
-	}
-
 	var err error
 
 	target := instance.DeepCopy()
 	targetLog := rlog.ForPipe(target)
 
-	for _, a := range actions {
+	for _, a := range r.actions {
 		a.InjectClient(r.client)
 		a.InjectLogger(targetLog)
 
