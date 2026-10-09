@@ -25,7 +25,7 @@ metadata:
     name: camel-k-operator
     app.kubernetes.io/component: operator
     app.kubernetes.io/name: camel-k
-    app.kubernetes.io/version: "2.11.0-SNAPSHOT"
+    app.kubernetes.io/version: "2.12.0-SNAPSHOT"
 spec:
   replicas: 1
   strategy:
@@ -41,12 +41,13 @@ spec:
         app: "camel-k"
         app.kubernetes.io/component: operator
         app.kubernetes.io/name: camel-k
-        app.kubernetes.io/version: "2.11.0-SNAPSHOT"
+        app.kubernetes.io/version: "2.12.0-SNAPSHOT"
     spec:
       serviceAccountName: camel-k-operator
+      enableServiceLinks: false
       containers:
         - name: camel-k-operator
-          image: docker.io/apache/camel-k:2.11.0-SNAPSHOT
+          image: docker.io/apache/camel-k:2.12.0-SNAPSHOT
           imagePullPolicy: IfNotPresent
           command:
             - kamel
@@ -77,6 +78,20 @@ spec:
             # Note: remove the variable to disable the feature.
             - name: CAMEL_MONITOR_OPERATOR_LABEL
               value: "camel.apache.org/monitor"
+            # You can provide a different SA for builder Pods
+            - name: BUILDER_SA
+              value: "camel-k-builder"
+            # Demo only: turn it off or remove the variable in a production environment.
+            - name: ENABLE_DEV_REGISTRY
+              value: "true"
+          # Attempt to read bootstrap configuration from configmap or secret
+          envFrom:
+            - configMapRef:
+                name: camel-k-operator-configmap-configuration
+                optional: true
+            - secretRef:
+                name: camel-k-operator-secret-configuration
+                optional: true
           livenessProbe:
             httpGet:
               path: /healthz

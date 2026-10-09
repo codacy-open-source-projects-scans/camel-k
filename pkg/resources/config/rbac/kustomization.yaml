@@ -24,9 +24,9 @@ kind: Kustomization
 resources:
 - builder-role.yaml
 - builder-role-openshift.yaml
+- dev-registry-role.yaml
 - kamelets-viewer-role.yaml
-- registry-clusterrole.yaml
 - builder-role-binding.yaml
 - builder-role-binding-openshift.yaml
+- dev-registry-role-binding.yaml
 - kamelets-viewer-role-binding.yaml
-- registry-clusterrole-binding.yaml

@@ -21,22 +21,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/v2/pkg/client"
 	"github.com/apache/camel-k/v2/pkg/platform"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
 	"github.com/apache/camel-k/v2/pkg/util/log"
-	serving "knative.dev/serving/pkg/apis/serving/v1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-var logOnce sync.Once
 
 func Apply(ctx context.Context, c client.Client, integration *v1.Integration, kit *v1.IntegrationKit) (*Environment, error) {
 	var ilog log.Logger
@@ -138,15 +133,7 @@ func newEnvironment(ctx context.Context, c client.Client, integration *v1.Integr
 		}
 	}
 
-	envPlatform := platform.SingletonPlatform
-	if pl != nil {
-		// Fallback to any existing IntegrationPlatform. This is deprecated though.
-		envPlatform = platform.FromIntegrationPlatform(pl)
-		logOnce.Do(func() {
-			log.Info("The operator detected the presence of a DEPRECATED IntegrationPlatform resource (" +
-				pl.Namespace + "/" + pl.Name + "). You need to remove it and replace any configuration with environment variables instead")
-		})
-	}
+	envPlatform := platform.GetPlatform(pl, ipr)
 
 	//
 	// kit can still be nil if integration kit is yet
@@ -166,75 +153,4 @@ func newEnvironment(ctx context.Context, c client.Client, integration *v1.Integr
 	}
 
 	return &env, nil
-}
-
-// NewSyntheticEnvironment creates an environment suitable for a synthetic Integration. If the application which generated the synthetic Integration
-// has no longer the label, it will return a nil result.
-func NewSyntheticEnvironment(ctx context.Context, c client.Client, integration *v1.Integration, kit *v1.IntegrationKit) (*Environment, error) {
-	if integration == nil && kit == nil {
-		return nil, errors.New("neither integration nor kit are set")
-	}
-
-	env := Environment{
-		Ctx:                   ctx,
-		IntegrationProfile:    nil,
-		Client:                c,
-		IntegrationKit:        kit,
-		Integration:           integration,
-		ExecutedTraits:        make([]Trait, 0),
-		Resources:             kubernetes.NewCollection(),
-		EnvVars:               make([]corev1.EnvVar, 0),
-		ApplicationProperties: make(map[string]string),
-	}
-
-	catalog := NewCatalog(c)
-	// set the catalog
-	env.Catalog = catalog
-	// we need to simulate the execution of the traits to fill certain values used later by monitoring
-	_, _, err := catalog.apply(&env)
-	if err != nil {
-		return nil, fmt.Errorf("error during trait customization: %w", err)
-	}
-	camelApp, err := getCamelAppObject(
-		ctx,
-		c,
-		integration.Annotations[v1.IntegrationImportedKindLabel],
-		integration.Namespace,
-		integration.Annotations[v1.IntegrationImportedNameLabel],
-	)
-	if err != nil {
-		return nil, err
-	}
-	// Verify if the application has still the expected label. If not, return nil.
-	if camelApp.GetLabels()[v1.IntegrationLabel] != integration.Name {
-		return nil, nil
-	}
-	env.Resources.Add(camelApp)
-
-	return &env, nil
-}
-
-func getCamelAppObject(ctx context.Context, c client.Client, kind, namespace, name string) (ctrl.Object, error) {
-	switch kind {
-	case "Deployment":
-		return c.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
-	case "CronJob":
-		return c.BatchV1().CronJobs(namespace).Get(ctx, name, metav1.GetOptions{})
-	case "KnativeService":
-		ksvc := &serving.Service{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "Service",
-				APIVersion: serving.SchemeGroupVersion.String(),
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: namespace,
-			},
-		}
-		err := c.Get(ctx, ctrl.ObjectKeyFromObject(ksvc), ksvc)
-
-		return ksvc, err
-	default:
-		return nil, fmt.Errorf("cannot create a synthetic environment for %s kind", kind)
-	}
 }

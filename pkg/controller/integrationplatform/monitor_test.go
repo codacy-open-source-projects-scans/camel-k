@@ -123,9 +123,9 @@ func TestMonitorDriftRuntime(t *testing.T) {
 }
 
 func TestMonitorDriftDefault(t *testing.T) {
-	catalog := v1.NewCamelCatalog("ns", fmt.Sprintf("camel-catalog-%s", defaults.DefaultRuntimeVersion))
-	catalog.Spec.Runtime.Version = defaults.DefaultRuntimeVersion
-	catalog.Spec.Runtime.Provider = v1.RuntimeProviderQuarkus
+	catalog := v1.NewCamelCatalog("ns", fmt.Sprintf("camel-catalog-quarkus-%s", defaults.CamelKRuntimeCatalogVersion))
+	catalog.Spec.Runtime.Version = defaults.CamelKRuntimeCatalogVersion
+	catalog.Spec.Runtime.Provider = v1.RuntimeProviderPlainQuarkus
 	catalog.Spec.Runtime.Metadata = map[string]string{
 		"camel.version": "3.2.1",
 	}
@@ -134,7 +134,7 @@ func TestMonitorDriftDefault(t *testing.T) {
 	ip.Name = "ck"
 	ip.Spec.Build.Registry.Address = "1.2.3.4"
 	ip.Status.Build.RuntimeVersion = defaults.DefaultRuntimeVersion
-	ip.Status.Build.RuntimeProvider = v1.RuntimeProviderQuarkus
+	ip.Status.Build.RuntimeProvider = v1.RuntimeProviderPlainQuarkus
 	ip.Status.Build.Registry.Address = "1.2.3.4"
 	ip.Status.Phase = v1.IntegrationPlatformPhaseReady
 	c, err := internal.NewFakeClient(&ip, &catalog)
@@ -155,9 +155,9 @@ func TestMonitorDriftDefault(t *testing.T) {
 }
 
 func TestMonitorDriftConfiguration(t *testing.T) {
-	catalog := v1.NewCamelCatalog("ns", fmt.Sprintf("camel-catalog-%s", defaults.DefaultRuntimeVersion))
-	catalog.Spec.Runtime.Version = defaults.DefaultRuntimeVersion
-	catalog.Spec.Runtime.Provider = v1.RuntimeProviderQuarkus
+	catalog := v1.NewCamelCatalog("ns", fmt.Sprintf("camel-catalog-%s", defaults.CamelKRuntimeCatalogVersion))
+	catalog.Spec.Runtime.Version = defaults.CamelKRuntimeCatalogVersion
+	catalog.Spec.Runtime.Provider = v1.RuntimeProviderPlainQuarkus
 	catalog.Spec.Runtime.Metadata = map[string]string{
 		"camel.version": "3.2.1",
 	}
@@ -173,13 +173,12 @@ func TestMonitorDriftConfiguration(t *testing.T) {
 					Name: "override",
 				},
 			},
-			Profile: v1.TraitProfileKnative,
 		},
 		Status: v1.IntegrationPlatformStatus{
 			IntegrationPlatformSpec: v1.IntegrationPlatformSpec{
 				Build: v1.IntegrationPlatformBuildSpec{
 					RuntimeVersion:     defaults.DefaultRuntimeVersion,
-					RuntimeProvider:    v1.RuntimeProviderQuarkus,
+					RuntimeProvider:    v1.RuntimeProviderPlainQuarkus,
 					RuntimeCoreVersion: "3.2.1",
 					Registry: v1.RegistrySpec{
 						Address: "1.2.3.4",
@@ -206,9 +205,8 @@ func TestMonitorDriftConfiguration(t *testing.T) {
 	assert.Equal(t, v1.IntegrationPlatformPhaseReady, answer.Status.Phase)
 	assert.Equal(t, defaults.Version, answer.Status.Version)
 	assert.Equal(t, defaults.DefaultRuntimeVersion, answer.Status.Build.RuntimeVersion)
-	assert.Equal(t, v1.RuntimeProviderQuarkus, answer.Status.Build.RuntimeProvider)
+	assert.Equal(t, v1.RuntimeProviderPlainQuarkus, answer.Status.Build.RuntimeProvider)
 	assert.Equal(t, "3.2.1", answer.Status.Build.RuntimeCoreVersion)
-	assert.Equal(t, v1.TraitProfileKnative, answer.Status.Profile)
 	assert.Equal(t, "override", answer.Status.Traits.Container.Name)
 }
 
@@ -283,7 +281,7 @@ func TestMonitorMissingCatalogError(t *testing.T) {
 	assert.Equal(t, v1.IntegrationPlatformConditionCamelCatalogAvailableReason, answer.Status.GetCondition(
 		v1.IntegrationPlatformConditionCamelCatalogAvailable).Reason)
 	assert.Equal(t, fmt.Sprintf("camel catalog %s not available, please review given runtime version",
-		defaults.DefaultRuntimeVersion), answer.Status.GetCondition(
+		defaults.CamelKRuntimeCatalogVersion), answer.Status.GetCondition(
 		v1.IntegrationPlatformConditionCamelCatalogAvailable).Message)
 }
 

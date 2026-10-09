@@ -22,7 +22,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	serving "knative.dev/serving/pkg/apis/serving/v1"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,8 +29,10 @@ import (
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	serving "github.com/apache/camel-k/v2/pkg/apis/duck/knative/serving/v1"
 	"github.com/apache/camel-k/v2/pkg/internal"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
+	"github.com/apache/camel-k/v2/pkg/util/defaults"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
 )
 
@@ -66,7 +67,7 @@ func TestDefaultPodKubernetesSecurityContext(t *testing.T) {
 
 	assert.NotNil(t, d)
 	assert.Equal(t, ptr.To(defaultPodRunAsNonRoot), d.Spec.Template.Spec.SecurityContext.RunAsNonRoot)
-	assert.Nil(t, d.Spec.Template.Spec.SecurityContext.RunAsUser)
+	assert.Equal(t, defaults.DefaultPodRunAsUser, *d.Spec.Template.Spec.SecurityContext.RunAsUser)
 	assert.Equal(t, corev1.SeccompProfileTypeRuntimeDefault, d.Spec.Template.Spec.SecurityContext.SeccompProfile.Type)
 }
 
@@ -77,7 +78,7 @@ func TestDefaultPodOpenshiftSecurityContext(t *testing.T) {
 	conditions, traits, err := traitCatalog.apply(environment)
 
 	require.NoError(t, err)
-	assert.NotEmpty(t, traits)
+	assert.Empty(t, traits)
 	assert.NotEmpty(t, conditions)
 	assert.NotEmpty(t, environment.ExecutedTraits)
 	assert.NotNil(t, environment.GetTrait("deployment"))
@@ -123,7 +124,7 @@ func TestUserPodSecurityContext(t *testing.T) {
 	environment.Integration.Spec.Traits = v1.Traits{
 		SecurityContext: &traitv1.SecurityContextTrait{
 			RunAsNonRoot:       ptr.To(false),
-			RunAsUser:          ptr.To(int64(1000)),
+			RunAsUser:          ptr.To(int64(1001)),
 			SeccompProfileType: "Unconfined",
 		},
 	}
@@ -142,7 +143,7 @@ func TestUserPodSecurityContext(t *testing.T) {
 
 	assert.NotNil(t, d)
 	assert.Equal(t, ptr.To(false), d.Spec.Template.Spec.SecurityContext.RunAsNonRoot)
-	assert.Equal(t, ptr.To(int64(1000)), d.Spec.Template.Spec.SecurityContext.RunAsUser)
+	assert.Equal(t, ptr.To(int64(1001)), d.Spec.Template.Spec.SecurityContext.RunAsUser)
 	assert.Equal(t, corev1.SeccompProfileTypeUnconfined, d.Spec.Template.Spec.SecurityContext.SeccompProfile.Type)
 }
 
@@ -164,6 +165,7 @@ func createPodSettingContextEnvironment(t *testing.T, profile v1.TraitProfile) *
 				Phase: v1.IntegrationPhaseDeploying,
 			},
 			Spec: v1.IntegrationSpec{
+				//nolint:staticcheck
 				Profile: profile,
 			},
 		},

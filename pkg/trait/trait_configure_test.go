@@ -18,6 +18,7 @@ limitations under the License.
 package trait
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,18 +29,22 @@ import (
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	"github.com/apache/camel-k/v2/pkg/internal"
 	"github.com/apache/camel-k/v2/pkg/util/boolean"
 )
 
 func TestTraitConfiguration(t *testing.T) {
+	cl, err := internal.NewFakeClient()
+	require.NoError(t, err)
 	env := Environment{
+		Ctx:    context.Background(),
+		Client: cl,
 		Integration: &v1.Integration{
 			Spec: v1.IntegrationSpec{
 				Traits: v1.Traits{
-					Logging: &traitv1.LoggingTrait{
-						JSON:            ptr.To(true),
-						JSONPrettyPrint: ptr.To(false),
-						Level:           "DEBUG",
+					Environment: &traitv1.EnvironmentTrait{
+						ContainerMeta: ptr.To(true),
+						HTTPProxy:     ptr.To(false),
 					},
 					Service: &traitv1.ServiceTrait{
 						Trait: traitv1.Trait{
@@ -53,11 +58,10 @@ func TestTraitConfiguration(t *testing.T) {
 	}
 	c := NewCatalog(nil)
 	require.NoError(t, c.Configure(&env))
-	logging, ok := c.GetTrait("logging").(*loggingTrait)
+	environment, ok := c.GetTrait("environment").(*environmentTrait)
 	require.True(t, ok)
-	assert.True(t, *logging.JSON)
-	assert.False(t, *logging.JSONPrettyPrint)
-	assert.Equal(t, "DEBUG", logging.Level)
+	assert.True(t, *environment.ContainerMeta)
+	assert.False(t, *environment.HTTPProxy)
 	service, ok := c.GetTrait("service").(*serviceTrait)
 	require.True(t, ok)
 	assert.True(t, *service.Enabled)
@@ -65,7 +69,11 @@ func TestTraitConfiguration(t *testing.T) {
 }
 
 func TestTraitConfigurationFromAnnotations(t *testing.T) {
+	cl, err := internal.NewFakeClient()
+	require.NoError(t, err)
 	env := Environment{
+		Ctx:    context.Background(),
+		Client: cl,
 		Integration: &v1.Integration{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
@@ -93,7 +101,11 @@ func TestTraitConfigurationFromAnnotations(t *testing.T) {
 }
 
 func TestFailOnWrongTraitAnnotations(t *testing.T) {
+	cl, err := internal.NewFakeClient()
+	require.NoError(t, err)
 	env := Environment{
+		Ctx:    context.Background(),
+		Client: cl,
 		Integration: &v1.Integration{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
@@ -107,11 +119,15 @@ func TestFailOnWrongTraitAnnotations(t *testing.T) {
 }
 
 func TestTraitListConfigurationFromAnnotations(t *testing.T) {
+	cl, err := internal.NewFakeClient()
+	require.NoError(t, err)
 	env := Environment{
+		Ctx:    context.Background(),
+		Client: cl,
 		Integration: &v1.Integration{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					v1.TraitAnnotationPrefix + "jolokia.options":       `["opt1", "opt2"]`,
+					v1.TraitAnnotationPrefix + "environment.vars":      `["V1=a", "V2=b"]`,
 					v1.TraitAnnotationPrefix + "camel.runtime-version": "1.2.3",
 				},
 			},
@@ -119,14 +135,18 @@ func TestTraitListConfigurationFromAnnotations(t *testing.T) {
 	}
 	c := NewCatalog(nil)
 	require.NoError(t, c.Configure(&env))
-	jt, _ := c.GetTrait("jolokia").(*jolokiaTrait)
-	assert.Equal(t, []string{"opt1", "opt2"}, jt.Options)
+	et, _ := c.GetTrait("environment").(*environmentTrait)
+	assert.Equal(t, []string{"V1=a", "V2=b"}, et.Vars)
 	cml, _ := c.GetTrait("camel").(*camelTrait)
 	assert.Equal(t, "1.2.3", cml.RuntimeVersion)
 }
 
 func TestTraitSplitConfiguration(t *testing.T) {
+	cl, err := internal.NewFakeClient()
+	require.NoError(t, err)
 	env := Environment{
+		Ctx:    context.Background(),
+		Client: cl,
 		Integration: &v1.Integration{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{

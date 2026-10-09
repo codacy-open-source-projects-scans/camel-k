@@ -19,7 +19,6 @@ package source
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -409,6 +408,22 @@ func TestYAMLDataFormat(t *testing.T) {
 	}
 }
 
+const yamlMasterEndpoint = `
+- from:
+    uri: master:lock:timer:tick
+    parameters:
+      period: 1000
+    steps:
+    - to: log:info
+`
+
+func TestYAMLMasterDelegate(t *testing.T) {
+	inspector := newTestYAMLInspector(t)
+	assertExtract(t, inspector, yamlMasterEndpoint, func(meta *Metadata) {
+		assert.ElementsMatch(t, []string{"camel:master", "camel:timer", "camel:log"}, meta.Dependencies.List())
+	})
+}
+
 const yamlKameletEipNoID = `
 - from:
     uri: timer:tick
@@ -624,7 +639,7 @@ const yamlFromDSLWithUnknownFromScheme = `
       - to: "log:info"
 `
 
-const yamlFromDSLWithUnknownToScheme = `
+const yamlFromDSLWithCustomComponentScheme = `
 - route:
     id: route2
     from:
@@ -633,12 +648,12 @@ const yamlFromDSLWithUnknownToScheme = `
       - to: "unknown:foo"
 `
 
-func TestYAMLRouteWithUnknownScheme(t *testing.T) {
+func TestYAMLRouteWithCustomComponentScheme(t *testing.T) {
 	inspector := newTestYAMLInspector(t)
-	for i, source := range []string{yamlFromDSLWithUnknownFromScheme, yamlFromDSLWithUnknownToScheme} {
-		t.Run(fmt.Sprintf("TestYAMLRouteWithUnknownScheme-%d", i), func(t *testing.T) {
-			assertExtractYAMLError(t, inspector, source, func(err error) {
-				assert.True(t, strings.HasPrefix(err.Error(), fmt.Sprintf("component not found for uri %q", "unknown:foo")))
+	for i, source := range []string{yamlFromDSLWithUnknownFromScheme, yamlFromDSLWithCustomComponentScheme} {
+		t.Run(fmt.Sprintf("TestYAMLRouteWithCustomComponent-%d", i), func(t *testing.T) {
+			assertExtractYAML(t, inspector, source, func(meta *Metadata) {
+				// all good
 			})
 		})
 	}

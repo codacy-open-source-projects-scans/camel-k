@@ -21,10 +21,10 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/ptr"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	"github.com/apache/camel-k/v2/pkg/util/defaults"
 	"github.com/apache/camel-k/v2/pkg/util/openshift"
 )
 
@@ -32,7 +32,7 @@ const (
 	securityContextTraitID   = "security-context"
 	securityContextTraitOder = 1600
 
-	defaultPodRunAsNonRoot       = false
+	defaultPodRunAsNonRoot       = true
 	defaultPodSeccompProfileType = corev1.SeccompProfileTypeRuntimeDefault
 )
 
@@ -50,9 +50,6 @@ func newSecurityContextTrait() Trait {
 func (t *securityContextTrait) Configure(e *Environment) (bool, *TraitCondition, error) {
 	if e.Integration == nil {
 		return false, nil, nil
-	}
-	if e.Integration.IsSynthetic() {
-		return false, NewIntegrationConditionPlatformDisabledWithMessage("SecurityContext", "synthetic integration"), nil
 	}
 	if !e.IntegrationInRunningPhases() {
 		return false, nil, nil
@@ -96,9 +93,7 @@ func (t *securityContextTrait) setSecurityContext(e *Environment, podSpec *corev
 		return err
 	}
 
-	t.RunAsUser = runAsUser
-
-	sc.RunAsUser = t.RunAsUser
+	sc.RunAsUser = runAsUser
 	podSpec.SecurityContext = &sc
 
 	return nil
@@ -115,7 +110,7 @@ func (t *securityContextTrait) getUser(e *Environment) (*int64, error) {
 		return nil, err
 	}
 	if !isOpenShift {
-		return nil, nil
+		return new(defaults.DefaultPodRunAsUser), nil
 	}
 
 	runAsUser, err := openshift.GetOpenshiftUser(e.Ctx, e.Client, e.Integration.Namespace)
@@ -128,7 +123,7 @@ func (t *securityContextTrait) getUser(e *Environment) (*int64, error) {
 
 func (t *securityContextTrait) getRunAsNonRoot() *bool {
 	if t.RunAsNonRoot == nil {
-		return ptr.To(defaultPodRunAsNonRoot)
+		return new(defaultPodRunAsNonRoot)
 	}
 
 	return t.RunAsNonRoot

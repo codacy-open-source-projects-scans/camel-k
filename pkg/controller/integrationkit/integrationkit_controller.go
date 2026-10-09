@@ -24,7 +24,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
@@ -153,6 +152,7 @@ func add(_ context.Context, mgr manager.Manager, r reconcile.Reconciler) error {
 
 							continue
 						}
+						//nolint:staticcheck
 						if v, ok := kit.Annotations[v1.OperatorIDAnnotation]; ok && v != itp.Name {
 							// kit waiting for another platform to become ready - skip here
 							log.Debugf("Integration kit %s is waiting for another integration platform '%s' - skip it now", kit.Name, v)
@@ -162,10 +162,8 @@ func add(_ context.Context, mgr manager.Manager, r reconcile.Reconciler) error {
 						if kit.Status.Phase == v1.IntegrationKitPhaseWaitingForPlatform {
 							log.Infof("Platform %s ready, wake-up integration kit: %s", itp.Name, kit.Name)
 							requests = append(requests, reconcile.Request{
-								NamespacedName: types.NamespacedName{
-									Namespace: kit.Namespace,
-									Name:      kit.Name,
-								},
+								Namespace: kit.Namespace,
+								Name:      kit.Name,
 							})
 						}
 					}
@@ -241,8 +239,7 @@ func (r *reconcileIntegrationKit) Reconcile(ctx context.Context, request reconci
 	//nolint:nestif
 	if target.Status.Phase == v1.IntegrationKitPhaseNone || target.Status.Phase == v1.IntegrationKitPhaseWaitingForPlatform {
 		rlog.Debug("Preparing to shift integration kit phase")
-		//nolint: staticcheck
-		if target.IsExternal() || target.IsSynthetic() {
+		if target.IsExternal() {
 			target.Status.Phase = v1.IntegrationKitPhaseInitialization
 
 			return r.update(ctx, &instance, target)

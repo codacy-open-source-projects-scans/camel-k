@@ -121,9 +121,9 @@ func StringSliceUniqueConcat(slice *[]string, items []string) bool {
 }
 
 func SubstringBefore(s string, substr string) string {
-	index := strings.LastIndex(s, substr)
-	if index != -1 {
-		return s[:index]
+	before, _, ok := strings.CutLast(s, substr)
+	if ok {
+		return before
 	}
 
 	return ""
@@ -310,18 +310,6 @@ func SortedMapKeys(m map[string]any) []string {
 	return res
 }
 
-func SortedStringMapKeys(m map[string]string) []string {
-	res := make([]string, len(m))
-	i := 0
-	for k := range m {
-		res[i] = k
-		i++
-	}
-	sort.Strings(res)
-
-	return res
-}
-
 // CopyMap clones a map of strings.
 func CopyMap(source map[string]string) map[string]string {
 	if source == nil {
@@ -488,8 +476,8 @@ func ConfigTreePropertySplit(property string) []string {
 		if len(cur) > 0 {
 			tmp = append(tmp, cur)
 		}
-		for i := len(tmp) - 1; i >= 0; i-- {
-			res = append(res, tmp[i])
+		for _, v := range slices.Backward(tmp) {
+			res = append(res, v)
 		}
 	}
 

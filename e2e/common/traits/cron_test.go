@@ -40,11 +40,11 @@ func TestRunCronExample(t *testing.T) {
 
 		t.Run("cron-fallback", func(t *testing.T) {
 			g.Expect(KamelRun(t, ctx, ns, "files/cron-fallback.yaml").Execute()).To(Succeed())
-			g.Eventually(IntegrationCronJob(t, ctx, ns, "cron-fallback"), TestTimeoutLong).Should(BeNil())
-			g.Eventually(IntegrationConditionStatus(t, ctx, ns, "cron-fallback", v1.IntegrationConditionReady), TestTimeoutShort).Should(
+			g.Eventually(IntegrationConditionStatus(t, ctx, ns, "cron-fallback", v1.IntegrationConditionReady), TestTimeoutMedium).Should(
 				Equal(corev1.ConditionTrue))
 			g.Eventually(IntegrationConditionStatus(t, ctx, ns, "cron-fallback", v1.IntegrationConditionCronJobAvailable),
 				TestTimeoutMedium).Should(Equal(corev1.ConditionFalse))
+			Consistently(IntegrationCronJob(t, ctx, ns, "cron-fallback"), TestTimeoutShort).Should(BeNil())
 			g.Eventually(IntegrationPodPhase(t, ctx, ns, "cron-fallback")).Should(Equal(corev1.PodRunning))
 			g.Eventually(IntegrationLogs(t, ctx, ns, "cron-fallback"), TestTimeoutShort).Should(ContainSubstring("Magicstring!"))
 			g.Eventually(DeleteIntegrations(t, ctx, ns)).Should(Equal(0))

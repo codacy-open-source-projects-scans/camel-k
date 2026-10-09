@@ -29,9 +29,8 @@ type MavenSpec struct {
 	LocalRepository string `json:"localRepository,omitempty"`
 	// The Maven properties.
 	Properties map[string]string `json:"properties,omitempty"`
-	// A reference to the ConfigMap or Secret key that contains
-	// the Maven profile.
-	Profiles []ValueSource `json:"profiles,omitempty"`
+	// Deprecated: no longer in use.
+	DeprecatedProfiles []ValueSource `json:"profiles,omitempty"`
 	// A reference to the ConfigMap or Secret key that contains
 	// the Maven settings.
 	Settings ValueSource `json:"settings,omitempty"`
@@ -45,9 +44,8 @@ type MavenSpec struct {
 	// and configured to be used as a trusted certificate(s) by the Maven commands.
 	// Note that the root CA certificates are also imported into the created keystore.
 	CASecrets []corev1.SecretKeySelector `json:"caSecrets,omitempty"`
-	// The Maven build extensions.
-	// See https://maven.apache.org/guides/mini/guide-using-extensions.html.
-	Extension []MavenArtifact `json:"extension,omitempty"`
+	// Deprecated: no longer in use.
+	DeprecatedExtension []MavenArtifact `json:"extension,omitempty"`
 	// The CLI options that are appended to the list of arguments for Maven commands,
 	// e.g., `-V,--no-transfer-progress,-Dstyle.color=never`.
 	// See https://maven.apache.org/ref/3.9.14/maven-embedder/cli.html.

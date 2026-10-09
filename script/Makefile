@@ -24,24 +24,34 @@ PROJECT_PATH := $(patsubst %/,%,$(dir $(MKFILE_PATH)))
 LOCALBIN := $(PROJECT_PATH)/bin
 
 VERSIONFILE := pkg/util/defaults/defaults.go
-VERSION ?= 2.11.0-SNAPSHOT
+VERSION ?= 2.12.0-SNAPSHOT
 LAST_RELEASED_IMAGE_NAME := camel-k-operator
-LAST_RELEASED_VERSION ?= 2.10.0
-DEFAULT_RUNTIME_VERSION := 3.15.3
+LAST_RELEASED_VERSION ?= 2.11.0
+DEFAULT_RUNTIME_PROVIDER := plain-quarkus
+DEFAULT_RUNTIME_VERSION := 3.40.1
+# The last camel-k-runtime catalog
+# we keep using it until we support the CamelCatalog CR
+CK_RUNTIME_CATALOG_VERSION := 3.15.3
+
 # Kubernetes tooling
-CONTROLLER_GEN_VERSION := v0.20.0
+CONTROLLER_GEN_VERSION := v0.22.0
 CONTROLLER_GEN=$(GOBIN)/controller-gen
-CODEGEN_VERSION := v0.35.0
+CODEGEN_VERSION := v0.37.0
 OPERATOR_SDK_VERSION := v1.30.0
 KUSTOMIZE_VERSION := v5.7.1
 OPM_VERSION := v1.61.0
+
 # Golang tooling
 LINTER ?= $(LOCALBIN)/golangci-lint
 DEADCODE ?= $(LOCALBIN)/deadcode
 GOVULNCHECK ?= $(LOCALBIN)/govulncheck
 GOIMPORT ?= $(LOCALBIN)/goimports
-LINTER_VERSION ?= v2.9.0
-GOVULNCHECK_VERSION ?= latest
+LINTER_VERSION ?= v2.14.0
+GOVULNCHECK_VERSION ?= v1.8.0
+GOIMPORTS_VERSION ?= v0.50.0
+GOTESTFMT_VERSION ?= v2.5.0
+DEADCODE_VERSION ?= v0.50.0
+
 LINT_GOGC ?= 20
 LINT_DEADLINE ?= 10m
 DEBUG_MODE ?= false
@@ -51,7 +61,7 @@ BASE_IMAGE_NAME := eclipse-temurin
 BASE_IMAGE_VERSION := 17-jdk
 OFFICIAL_IMAGE_VERSION := 17-jdk
 BASE_IMAGE_SHA_VERSION := 17-jdk
-BASE_IMAGE_SHA := sha256:aae0b1494a5637b2c1b933080088ccc196dec7ffb83ce1cd524211ea4f640ff4
+BASE_IMAGE_SHA := sha256:5d6042fb8cdc14d614e4e421f52e3211fc5aeadddce44cbf9de8ed37c791f824
 BASE_IMAGE := $(BASE_IMAGE_NAME):$(BASE_IMAGE_VERSION)$(if $(filter $(BASE_IMAGE_VERSION),$(BASE_IMAGE_SHA_VERSION)),@$(BASE_IMAGE_SHA),)
 LOCAL_REPOSITORY := /etc/maven/m2
 OPENSHIFT_REGISTRY := image-registry.openshift-image-registry.svc:5000
@@ -113,15 +123,6 @@ TEST_PREBUILD = build
 TEST_COMMON_PARALLEL_COUNT ?= 2
 TEST_ADVANCED_PARALLEL_COUNT ?= 2
 
-# OLM (Operator Lifecycle Manager and Operator Hub): uncomment to override operator settings at build time
-#GOLDFLAGS += -X github.com/apache/camel-k/v2/pkg/util/olm.DefaultOperatorName=camel-k-operator
-#GOLDFLAGS += -X github.com/apache/camel-k/v2/pkg/util/olm.DefaultPackage=camel-k
-#GOLDFLAGS += -X github.com/apache/camel-k/v2/pkg/util/olm.DefaultChannel=alpha
-#GOLDFLAGS += -X github.com/apache/camel-k/v2/pkg/util/olm.DefaultSource=community-operators
-#GOLDFLAGS += -X github.com/apache/camel-k/v2/pkg/util/olm.DefaultSourceNamespace=openshift-marketplace
-#GOLDFLAGS += -X github.com/apache/camel-k/v2/pkg/util/olm.DefaultStartingCSV=
-#GOLDFLAGS += -X github.com/apache/camel-k/v2/pkg/util/olm.DefaultGlobalNamespace=openshift-operators
-
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -162,11 +163,8 @@ endef
 export LICENSE_HEADER
 default: build
 
-update-docs: build-resources
+update-docs:
 	./script/update_docs.sh
-
-update-default-camel:
-	./script/update_default_camel.sh
 
 bump-replace:
 	@# Bump version and replace with the variables provided by the user
@@ -192,8 +190,14 @@ codegen:
 	@echo "  // Version -- " >> $(VERSIONFILE)
 	@echo "  Version = \"$(CUSTOM_VERSION)\"" >> $(VERSIONFILE)
 	@echo "" >> $(VERSIONFILE)
+	@echo "  // DefaultRuntimeProvider -- " >> $(VERSIONFILE)
+	@echo "  DefaultRuntimeProvider = \"$(DEFAULT_RUNTIME_PROVIDER)\"" >> $(VERSIONFILE)
+	@echo "" >> $(VERSIONFILE)
 	@echo "  // DefaultRuntimeVersion -- " >> $(VERSIONFILE)
 	@echo "  DefaultRuntimeVersion = \"$(DEFAULT_RUNTIME_VERSION)\"" >> $(VERSIONFILE)
+	@echo "" >> $(VERSIONFILE)
+	@echo "  // CamelKRuntimeCatalogVersion -- " >> $(VERSIONFILE)
+	@echo "  CamelKRuntimeCatalogVersion = \"$(CK_RUNTIME_CATALOG_VERSION)\"" >> $(VERSIONFILE)
 	@echo "" >> $(VERSIONFILE)
 	@echo "  // baseImage -- " >> $(VERSIONFILE)
 	@echo "  baseImage = \"$(BASE_IMAGE)\"" >> $(VERSIONFILE)
@@ -238,13 +242,13 @@ codegen-tools-install:
 	go install k8s.io/code-generator/cmd/informer-gen@$(CODEGEN_VERSION)
 	go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
 
-build: codegen build-resources test build-kamel build-compile-integration-tests
+build: codegen test build-kamel build-compile-integration-tests
 
 build-platform: build build-kamel-platform
 
 ci-build: clean codegen set-version check-licenses dir-licenses build-kamel cross-compile
 
-do-build: gotestfmt-install
+do-build:
 ifeq ($(DO_TEST_PREBUILD),true)
 TEST_PREBUILD = build
 else
@@ -252,9 +256,7 @@ TEST_PREBUILD =
 endif
 
 gotestfmt-install:
-ifeq (, $(shell command -v gotestfmt 2> /dev/null))
-	go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
-endif
+	go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@$(GOTESTFMT_VERSION)
 
 # Build images without running unit tests
 # NOTEST=1 make images
@@ -270,7 +272,7 @@ endif
 # Common tests that do not require any customized operator setting. They can leverage a unique namespaced operator installation to reduce
 # the time to complete (they are used also as smoke test for nightly release)
 #
-test-common:
+test-common: gotestfmt-install
 	FAILED=0; \
 	go test -p $(TEST_COMMON_PARALLEL_COUNT) -timeout 90m -v ./e2e/common/... --parallel 1 -tags=integration $(GOTESTFMT) || ((FAILED++)); \
 	exit $${FAILED}
@@ -278,7 +280,7 @@ test-common:
 #
 # Smoke tests are a subset of common tests used to quickly verify the operator
 #
-test-smoke:
+test-smoke: gotestfmt-install
 	FAILED=0; \
 	go test -p $(TEST_COMMON_PARALLEL_COUNT) -timeout 45m -v \
 		./e2e/common/languages \
@@ -290,25 +292,32 @@ test-smoke:
 #
 # Common tests that require some particular operator setting or need to be installed in multiple namespaces
 #
-test-advanced:
+test-advanced: gotestfmt-install
 	FAILED=0; \
 	go test -p 1 -timeout 90m -v ./e2e/advanced --parallel $(TEST_ADVANCED_PARALLEL_COUNT) -tags=integration $(GOTESTFMT) || ((FAILED++)); \
 	exit $${FAILED}
 
 #
-# Installation and upgrade procedure test using
+# Installation procedure test using
 #
-test-install:
+test-install: gotestfmt-install
 	FAILED=0; \
-	go test -timeout 20m -v ./e2e/install/kustomize -tags=integration $(GOTESTFMT) || ((FAILED++)); \
-	go test -timeout 20m -v ./e2e/install/helm -tags=integration $(GOTESTFMT) || ((FAILED++)); \
-	go test -timeout 60m -v ./e2e/install/upgrade -tags=integration $(GOTESTFMT) || ((FAILED++)); \
+	go test -timeout 15m -v ./e2e/install/kustomize -tags=integration $(GOTESTFMT) || ((FAILED++)); \
+	go test -timeout 15m -v ./e2e/install/helm -tags=integration $(GOTESTFMT) || ((FAILED++)); \
+	exit $${FAILED}
+
+#
+# Upgrade procedure test using
+#
+test-upgrade: gotestfmt-install
+	FAILED=0; \
+	go test -timeout 15m -v ./e2e/upgrade -tags=integration $(GOTESTFMT) || ((FAILED++)); \
 	exit $${FAILED}
 
 #
 # Installation procedure test via OLM
 #
-test-install-olm:
+test-install-olm: gotestfmt-install
 	FAILED=0; \
 	go test -timeout 20m -v ./e2e/install/olm -tags=integration $(GOTESTFMT) || ((FAILED++)); \
 	exit $${FAILED}
@@ -316,7 +325,7 @@ test-install-olm:
 #
 # Knative tests that require the presence of Knative configuration
 #
-test-knative:
+test-knative: gotestfmt-install
 	FAILED=0; \
 	go test -timeout 60m -v ./e2e/knative -tags=integration $(GOTESTFMT) || ((FAILED++)); \
 	exit $${FAILED}
@@ -324,27 +333,41 @@ test-knative:
 #
 # Kafka tests that require the presence of Strimzi operator configuration
 #
-test-kafka:
+test-kafka: gotestfmt-install
 	FAILED=0; \
 	go test -timeout 20m -v ./e2e/kafka -tags=integration $(GOTESTFMT) || ((FAILED++)); \
 	exit $${FAILED}
 
 #
+# ArkMQ tests that require the presence of ArkMQ operator configuration
+#
+test-arkmq: gotestfmt-install
+	FAILED=0; \
+	go test -timeout 20m -v ./e2e/arkmq -tags=integration $(GOTESTFMT) || ((FAILED++)); \
+	exit $${FAILED}
+
+#
 # Telemetry tests that require the configuration of telemetry endpoints
 #
-test-telemetry:
+test-telemetry: gotestfmt-install
 	go test -timeout 30m -v ./e2e/telemetry -tags=integration $(GOTESTFMT)
 
 #
 # Gateway tests that require the configuration of a gateway (Envoy)
 #
-test-gateway:
+test-gateway: gotestfmt-install
 	go test -timeout 10m -v ./e2e/gateway -tags=integration $(GOTESTFMT)
+
+#
+# Cert-manager tests that require the presence of cert-manager
+#
+test-cert-manager: gotestfmt-install
+	go test -timeout 10m -v ./e2e/cert-manager -tags=integration $(GOTESTFMT)
 
 #
 # Quarkus native test (requires certain CPU and memory conditions)
 #
-test-quarkus-native:
+test-quarkus-native: gotestfmt-install
 	go test -timeout 180m -v ./e2e/native -tags=integration $(GOTESTFMT)
 
 build-kamel:
@@ -361,9 +384,6 @@ ifneq ($(shell uname -s 2>/dev/null || echo Unknown),Linux)
 	# Symbolic link to a local CLI
 	ln -sf build/_output/bin/kamel-$(IMAGE_ARCH) ./kamel
 endif
-
-build-resources:
-	./script/get_catalog.sh $(DEFAULT_RUNTIME_VERSION)
 
 build-compile-integration-tests:
 ifndef NOTEST
@@ -427,7 +447,7 @@ fmt: goimport
 	go fmt ./...
 
 dead-code:
-	GOBIN=$(LOCALBIN) go install golang.org/x/tools/cmd/deadcode@latest
+	GOBIN=$(LOCALBIN) go install golang.org/x/tools/cmd/deadcode@$(DEADCODE_VERSION)
 	GOGC=$(LINT_GOGC) $(DEADCODE) ./...
 
 
@@ -448,9 +468,6 @@ DOCKER_TAG := $(CUSTOM_IMAGE):$(CUSTOM_VERSION)-$(BASE_IMAGE_VERSION)-$(IMAGE_AR
 images: build image-build build-kamel-platform
 
 image-build:
-ifneq (,$(findstring SNAPSHOT,$(DEFAULT_RUNTIME_VERSION)))
-	./script/package_maven_artifacts.sh -d "$(CAMEL_K_RUNTIME_DIR)" $(DEFAULT_RUNTIME_VERSION)
-endif
 	@echo "####### Building Camel K operator jdk $(BASE_IMAGE_VERSION) arch $(IMAGE_ARCH) container image..."
 	mkdir -p build/_maven_output
 	docker buildx build --target $(TARGET_STAGE) \
@@ -571,13 +588,13 @@ cross-compile:
 	# be processed as a single argument by the cross compile script
 	./script/cross_compile.sh $(CUSTOM_VERSION) $(subst ","\",$(GOFLAGS))
 
-release-staging: clean codegen set-version check-licenses build-resources images-all images-tag-staging-all images-push-staging-all cross-compile release-helm bundle-push-staging git-tag sbomgen
+release-staging: clean codegen set-version check-licenses images-all images-tag-staging-all images-push-staging-all cross-compile release-helm bundle-push-staging git-tag sbomgen
 
 sbomgen:
 	cyclonedx-gomod mod -licenses -json -output sbom.json
 
 # Build images
-images-nightly: clean codegen set-version build-resources images-all
+images-nightly: clean codegen set-version images-all
 
 # Release artifacts
 release-nightly: cross-compile images-push-all
@@ -586,7 +603,7 @@ release-helm:
 	./script/set_version.sh ${VERSION}
 	./script/release_helm.sh ${VERSION}
 
-.PHONY: do-build build build-kamel build-kamel-platform build-resources dep codegen images images-push image-build test check clean release cross-compile package-examples set-version git-tag check-licenses build-resources release-helm release-staging release-nightly get-staging-repo get-version
+.PHONY: do-build build build-kamel build-kamel-platform dep codegen images images-push image-build test check clean release cross-compile package-examples set-version git-tag check-licenses release-helm release-staging release-nightly get-staging-repo get-version
 .PHONY: kubectl kustomize operator-sdk opm
 
 kubectl:
@@ -727,7 +744,7 @@ ifndef NAMESPACE
 	@echo "WARN: no namespace specified, using default namespace $(DEFAULT_NS)"
 	$(eval NAMESPACE=$(DEFAULT_NS))
 endif
-	$(OPERATOR_SDK) run bundle $(BUNDLE_IMAGE_NAME):$(CUSTOM_VERSION) -n $(NAMESPACE)
+	$(OPERATOR_SDK) run bundle $(BUNDLE_IMAGE_NAME):$(CUSTOM_VERSION) --install-mode $(OLM_INSTALL_MODE) -n $(NAMESPACE)
 
 #
 # Builds a test catalog index for installing the operator via an OLM
@@ -753,13 +770,13 @@ govulncheck:
 
 .PHONY: goimport
 goimport:
-	GOBIN=$(LOCALBIN) go install golang.org/x/tools/cmd/goimports@latest
+	GOBIN=$(LOCALBIN) go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
 
 #####
 # START Local installation procedure. Handy for development purpose
 #####
 
-KUSTOMIZE_DIR = "install/overlays/kubernetes/descoped"
+KUSTOMIZE_DIR = "install/overlays/all-namespaces"
 DEFAULT_NS = "camel-k"
 
 .PHONY: install install-k8s-global install-k8s-ns install-openshift-global install-openshift-ns
@@ -804,28 +821,13 @@ endif
 	cd $(KUST_TMP)/install/overlays/platform && kustomize edit set namespace $(NAMESPACE)
 	kubectl apply -k $(KUST_TMP)/$(KUSTOMIZE_DIR) --server-side --force-conflicts
 
-install-registry:
-	@echo "####### Installing container registry..."
-ifdef REGISTRY
-	@echo "INFO: Setting IntegrationPlatform container registry to $(REGISTRY)"
-	@sed -i 's/address: .*/address: $(REGISTRY)/' $(KUST_TMP)/install/overlays/platform/integration-platform.yaml
-	kubectl apply -k $(KUST_TMP)/install/overlays/platform --server-side -n $(NAMESPACE) --force-conflicts
-else
-	$(eval MINIKUBE_REGISTRY=$(shell kubectl -n kube-system get service registry -o jsonpath='{.spec.clusterIP}' 2> /dev/null))
-ifneq ($(MINIKUBE_REGISTRY),"")
-	@echo "INFO: Looks like you're on Minikube. Setting IntegrationPlatform container registry to $(MINIKUBE_REGISTRY)"
-	@sed -i 's/address: .*/address: $(MINIKUBE_REGISTRY)/' $(KUST_TMP)/install/overlays/platform/integration-platform.yaml
-	kubectl apply -k $(KUST_TMP)/install/overlays/platform --server-side -n $(NAMESPACE) --force-conflicts
-endif
-endif
-
 install-k8s-global: DEFAULT_NS="camel-k"
-install-k8s-global: KUSTOMIZE_DIR="install/overlays/kubernetes/descoped"
-install-k8s-global: clone-kustomize-dir set-operator-id set-operator-env install-operator install-registry
+install-k8s-global: KUSTOMIZE_DIR="install/overlays/all-namespaces"
+install-k8s-global: clone-kustomize-dir set-operator-id set-operator-env install-operator
 
 install-k8s-ns: DEFAULT_NS="default"
-install-k8s-ns: KUSTOMIZE_DIR="install/overlays/kubernetes/namespaced"
-install-k8s-ns: clone-kustomize-dir set-operator-id set-operator-env install-operator install-registry
+install-k8s-ns: KUSTOMIZE_DIR="install/overlays/own-namespace"
+install-k8s-ns: clone-kustomize-dir set-operator-id set-operator-env install-operator
 
 uninstall:
 ifdef NAMESPACE

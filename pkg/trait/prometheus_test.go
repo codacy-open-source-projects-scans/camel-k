@@ -37,27 +37,26 @@ import (
 func TestConfigurePrometheusTraitInRightPhaseDoesSucceed(t *testing.T) {
 	trait, environment := createNominalPrometheusTest()
 
-	configured, condition, err := trait.Configure(environment)
+	configured, _, err := trait.Configure(environment)
 
 	require.NoError(t, err)
 	assert.True(t, configured)
-	assert.Nil(t, condition)
 }
 
 func TestConfigurePrometheusTraitInWrongPhaseDoesNotSucceed(t *testing.T) {
 	trait, environment := createNominalPrometheusTest()
 	environment.Integration.Status.Phase = v1.IntegrationPhaseBuildingKit
 
-	configured, condition, err := trait.Configure(environment)
+	configured, _, err := trait.Configure(environment)
 
 	require.NoError(t, err)
 	assert.False(t, configured)
-	assert.Nil(t, condition)
 }
 
 func TestApplyNominalPrometheusTraitDoesSucceed(t *testing.T) {
 	trait, environment := createNominalPrometheusTest()
 
+	trait.Configure(environment)
 	err := trait.Apply(environment)
 
 	require.NoError(t, err)
@@ -87,6 +86,7 @@ func TestApplyPrometheusTraitWithoutContainerDoesNotSucceed(t *testing.T) {
 	trait, environment := createNominalPrometheusTest()
 	environment.Resources = kubernetes.NewCollection()
 
+	trait.Configure(environment)
 	err := trait.Apply(environment)
 
 	require.NoError(t, err)

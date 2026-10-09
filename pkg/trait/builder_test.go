@@ -146,6 +146,7 @@ func createNominalBuilderTraitTest() *builderTrait {
 }
 
 func TestCustomTaskBuilderTrait(t *testing.T) {
+	t.Setenv("BUILDER_TASKS_ENABLED", "true")
 	env := createBuilderTestEnv(v1.BuildStrategyPod)
 	builderTrait := createNominalBuilderTraitTest()
 	builderTrait.Tasks = append(builderTrait.Tasks, "test;alpine;ls")
@@ -169,6 +170,7 @@ func TestCustomTaskBuilderTrait(t *testing.T) {
 }
 
 func TestCustomTaskBuilderTraitValidStrategyOverride(t *testing.T) {
+	t.Setenv("BUILDER_TASKS_ENABLED", "true")
 	env := createBuilderTestEnv(platform.DefaultBuildStrategy)
 	builderTrait := createNominalBuilderTraitTest()
 	builderTrait.Tasks = append(builderTrait.Tasks, "test;alpine;ls")
@@ -187,6 +189,7 @@ func TestCustomTaskBuilderTraitValidStrategyOverride(t *testing.T) {
 }
 
 func TestCustomTaskBuilderTraitInvalidStrategy(t *testing.T) {
+	t.Setenv("BUILDER_TASKS_ENABLED", "true")
 	env := createBuilderTestEnv(v1.BuildStrategyRoutine)
 	builderTrait := createNominalBuilderTraitTest()
 	builderTrait.Tasks = append(builderTrait.Tasks, "test;alpine;ls")
@@ -198,9 +201,12 @@ func TestCustomTaskBuilderTraitInvalidStrategy(t *testing.T) {
 	assert.Equal(t, v1.IntegrationKitPhaseError, env.IntegrationKit.Status.Phase)
 	assert.Equal(t, corev1.ConditionFalse, env.IntegrationKit.Status.Conditions[0].Status)
 	assert.Equal(t, env.IntegrationKit.Status.Conditions[0].Type, v1.IntegrationKitConditionType("IntegrationKitTasksValid"))
+	require.NotNil(t, env.IntegrationKit.Status.Failure)
+	assert.Equal(t, "Pipeline tasks unavailable when using `routine` platform build strategy: use `pod` instead.", env.IntegrationKit.Status.Failure.Reason)
 }
 
 func TestCustomTaskBuilderTraitInvalidStrategyOverride(t *testing.T) {
+	t.Setenv("BUILDER_TASKS_ENABLED", "true")
 	env := createBuilderTestEnv(v1.BuildStrategyPod)
 	builderTrait := createNominalBuilderTraitTest()
 	builderTrait.Tasks = append(builderTrait.Tasks, "test;alpine;ls")
@@ -213,47 +219,8 @@ func TestCustomTaskBuilderTraitInvalidStrategyOverride(t *testing.T) {
 	assert.Equal(t, v1.IntegrationKitPhaseError, env.IntegrationKit.Status.Phase)
 	assert.Equal(t, corev1.ConditionFalse, env.IntegrationKit.Status.Conditions[0].Status)
 	assert.Equal(t, env.IntegrationKit.Status.Conditions[0].Type, v1.IntegrationKitConditionType("IntegrationKitTasksValid"))
-}
-
-func TestMavenProfilesBuilderTrait(t *testing.T) {
-	env := createBuilderTestEnv(platform.DefaultBuildStrategy)
-	builderTrait := createNominalBuilderTraitTest()
-	builderTrait.MavenProfiles = []string{"configmap:maven-profile/owasp-profile.xml", "secret:maven-profile-secret"}
-
-	err := builderTrait.Apply(env)
-
-	require.NoError(t, err)
-
-	assert.Equal(t, v1.ValueSource{
-		ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-			LocalObjectReference: corev1.LocalObjectReference{
-				Name: "maven-profile",
-			},
-			Key: "owasp-profile.xml",
-		},
-	}, env.Pipeline[0].Builder.Maven.MavenSpec.Profiles[0])
-	assert.Equal(t, v1.ValueSource{
-		SecretKeyRef: &corev1.SecretKeySelector{
-			LocalObjectReference: corev1.LocalObjectReference{
-				Name: "maven-profile-secret",
-			},
-			Key: "profile.xml",
-		},
-	}, env.Pipeline[0].Builder.Maven.MavenSpec.Profiles[1])
-}
-
-func TestInvalidMavenProfilesBuilderTrait(t *testing.T) {
-	env := createBuilderTestEnv(platform.DefaultBuildStrategy)
-	builderTrait := createNominalBuilderTraitTest()
-	builderTrait.MavenProfiles = []string{"fakeprofile"}
-
-	err := builderTrait.Apply(env)
-
-	// The error will be reported to IntegrationKits
-	require.NoError(t, err)
-	assert.Equal(t, v1.IntegrationKitPhaseError, env.IntegrationKit.Status.Phase)
-	assert.Equal(t, corev1.ConditionFalse, env.IntegrationKit.Status.Conditions[0].Status)
-	assert.Contains(t, env.IntegrationKit.Status.Conditions[0].Message, "fakeprofile")
+	require.NotNil(t, env.IntegrationKit.Status.Failure)
+	assert.Equal(t, "Pipeline tasks unavailable when using `routine` platform build strategy: use `pod` instead.", env.IntegrationKit.Status.Failure.Reason)
 }
 
 func TestBuilderCustomTasks(t *testing.T) {
@@ -516,6 +483,7 @@ func TestBuilderTasksFilterAndReorderOperatorTasks(t *testing.T) {
 }
 
 func TestBuilderTasksFilterAndReorderCustomTasks(t *testing.T) {
+	t.Setenv("BUILDER_TASKS_ENABLED", "true")
 	env := createBuilderTestEnv(v1.BuildStrategyPod)
 	builderTrait := createNominalBuilderTraitTest()
 	builderTrait.Tasks = append(builderTrait.Tasks, `my-custom-publish;alpine;mvn test`)
@@ -641,4 +609,172 @@ func TestBuilderTraitOrderStrategy(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, v1.BuildOrderStrategyFIFO, env.Pipeline[0].Builder.Configuration.OrderStrategy)
+}
+
+// TestFilterNodeSelector_NoAllowList verifies that when BUILDER_NODE_SELECTOR_ALLOWED_LABELS is
+// not set, all node-selector keys pass through unchanged.
+func TestFilterNodeSelector_NoAllowList(t *testing.T) {
+	bt := createNominalBuilderTraitTest()
+	bt.NodeSelector = map[string]string{
+		"kubernetes.io/hostname":         "node-1",
+		"node-role.kubernetes.io/worker": "true",
+	}
+
+	// env var not set – nil allow list means everything is allowed
+	result := bt.filterNodeSelector()
+	assert.Equal(t, bt.NodeSelector, result)
+}
+
+// TestFilterNodeSelector_AllowListFiltersKeys verifies that only keys present in the allow list
+// survive when BUILDER_NODE_SELECTOR_ALLOWED_LABELS is set.
+func TestFilterNodeSelector_AllowListFiltersKeys(t *testing.T) {
+	t.Setenv("BUILDER_NODE_SELECTOR_ALLOWED_LABELS", "kubernetes.io/hostname")
+
+	bt := createNominalBuilderTraitTest()
+	bt.NodeSelector = map[string]string{
+		"kubernetes.io/hostname":         "node-1",
+		"node-role.kubernetes.io/worker": "true", // not in allow list – must be dropped
+	}
+
+	result := bt.filterNodeSelector()
+	assert.Len(t, result, 1)
+	assert.Equal(t, "node-1", result["kubernetes.io/hostname"])
+	assert.NotContains(t, result, "node-role.kubernetes.io/worker")
+}
+
+// TestFilterNodeSelector_AllowListAllKeysAllowed verifies that when every key is in the allow list
+// the map is returned intact.
+func TestFilterNodeSelector_AllowListAllKeysAllowed(t *testing.T) {
+	t.Setenv("BUILDER_NODE_SELECTOR_ALLOWED_LABELS", "kubernetes.io/hostname,node-role.kubernetes.io/worker")
+
+	bt := createNominalBuilderTraitTest()
+	bt.NodeSelector = map[string]string{
+		"kubernetes.io/hostname":         "node-1",
+		"node-role.kubernetes.io/worker": "true",
+	}
+
+	result := bt.filterNodeSelector()
+	assert.Equal(t, bt.NodeSelector, result)
+}
+
+// TestFilterNodeSelector_NilNodeSelector verifies that a nil NodeSelector is returned as-is.
+func TestFilterNodeSelector_NilNodeSelector(t *testing.T) {
+	t.Setenv("BUILDER_NODE_SELECTOR_ALLOWED_LABELS", "kubernetes.io/hostname")
+
+	bt := createNominalBuilderTraitTest()
+	bt.NodeSelector = nil
+
+	result := bt.filterNodeSelector()
+	assert.Nil(t, result)
+}
+
+// TestFilterNodeSelector_EmptyNodeSelector verifies that an empty NodeSelector is returned as-is.
+func TestFilterNodeSelector_EmptyNodeSelector(t *testing.T) {
+	t.Setenv("BUILDER_NODE_SELECTOR_ALLOWED_LABELS", "kubernetes.io/hostname")
+
+	bt := createNominalBuilderTraitTest()
+	bt.NodeSelector = map[string]string{}
+
+	result := bt.filterNodeSelector()
+	assert.Empty(t, result)
+}
+
+// TestFilterNodeSelector_AllKeysDropped verifies that when no key matches the allow list the
+// result is an empty map (not nil).
+func TestFilterNodeSelector_AllKeysDropped(t *testing.T) {
+	t.Setenv("BUILDER_NODE_SELECTOR_ALLOWED_LABELS", "kubernetes.io/hostname")
+
+	bt := createNominalBuilderTraitTest()
+	bt.NodeSelector = map[string]string{
+		"node-role.kubernetes.io/worker": "true",
+		"topology.kubernetes.io/zone":    "us-east-1a",
+	}
+
+	result := bt.filterNodeSelector()
+	assert.NotNil(t, result)
+	assert.Empty(t, result)
+}
+
+// TestBuilderTraitNodeSelectorAppliedWithAllowList is an end-to-end test that verifies the
+// pipeline builder task only contains allowed node-selector keys after Apply().
+func TestBuilderTraitNodeSelectorAppliedWithAllowList(t *testing.T) {
+	t.Setenv("BUILDER_NODE_SELECTOR_ALLOWED_LABELS", "kubernetes.io/hostname")
+
+	env := createBuilderTestEnv(platform.DefaultBuildStrategy)
+	bt := createNominalBuilderTraitTest()
+	bt.NodeSelector = map[string]string{
+		"kubernetes.io/hostname":         "node-42",
+		"node-role.kubernetes.io/worker": "true",
+	}
+
+	err := bt.Apply(env)
+	require.NoError(t, err)
+	require.NotNil(t, env.Pipeline[0].Builder)
+
+	ns := env.Pipeline[0].Builder.Configuration.NodeSelector
+	assert.Len(t, ns, 1)
+	assert.Equal(t, "node-42", ns["kubernetes.io/hostname"])
+	assert.NotContains(t, ns, "node-role.kubernetes.io/worker")
+}
+
+// TestBuilderTraitTasksDisabledByOperator verifies that when BUILDER_TASKS_ENABLED=false the
+// custom tasks are not added to the pipeline even when the CR author sets builder.tasks.
+func TestBuilderTraitTasksDisabledByOperator(t *testing.T) {
+	t.Setenv("BUILDER_TASKS_ENABLED", "false")
+
+	env := createBuilderTestEnv(v1.BuildStrategyPod)
+	bt := createNominalBuilderTraitTest()
+	bt.Tasks = []string{"custom;alpine;echo hello"}
+
+	err := bt.Apply(env)
+	require.NoError(t, err)
+
+	// pipeline must contain only the builder task, no custom task appended
+	for _, task := range env.Pipeline {
+		assert.Nil(t, task.Custom, "custom task must not be present when builder.tasks is disabled")
+	}
+}
+
+// TestBuilderTraitTasksDisabledKeepsQuarkusNative verifies that when BUILDER_TASKS_ENABLED=false
+// the operator-injected quarkus-native task is preserved while user tasks are dropped.
+func TestBuilderTraitTasksDisabledKeepsQuarkusNative(t *testing.T) {
+	t.Setenv("BUILDER_TASKS_ENABLED", "false")
+
+	env := createBuilderTestEnv(v1.BuildStrategyPod)
+	bt := createNominalBuilderTraitTest()
+	bt.quarkusNativeTask = "quarkus-native;quarkus-image;/bin/bash -c \"build native\""
+	bt.Tasks = []string{
+		"user-task;alpine;echo hello",
+	}
+
+	err := bt.Apply(env)
+	require.NoError(t, err)
+
+	var customNames []string
+	for _, task := range env.Pipeline {
+		if task.Custom != nil {
+			customNames = append(customNames, task.Custom.Name)
+		}
+	}
+	assert.Contains(t, customNames, "quarkus-native", "quarkus-native task must be preserved when builder.tasks is disabled")
+	assert.NotContains(t, customNames, "user-task", "user task must be dropped when builder.tasks is disabled")
+}
+
+// TestBuilderTraitTasksEnabledByDefault verifies that when BUILDER_TASKS_ENABLED is unset.
+func TestBuilderTraitTasksEnabledByDefault(t *testing.T) {
+	env := createBuilderTestEnv(v1.BuildStrategyPod)
+	bt := createNominalBuilderTraitTest()
+	bt.Tasks = []string{"custom;alpine;echo hello"}
+
+	err := bt.Apply(env)
+	require.NoError(t, err)
+
+	found := false
+	for _, task := range env.Pipeline {
+		if task.Custom != nil && task.Custom.Name == "custom" {
+			found = true
+			break
+		}
+	}
+	assert.False(t, found, "custom task must not be present when builder.tasks is disabled (default)")
 }

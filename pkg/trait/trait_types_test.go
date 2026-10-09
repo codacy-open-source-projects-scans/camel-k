@@ -125,14 +125,14 @@ func TestDetermineControllerStrategyAutoKnative(t *testing.T) {
 	assert.Equal(t, ControllerStrategyKnativeService, strategy)
 }
 
-func TestDetermineControllerStrategySyntheticKitDefault(t *testing.T) {
+func TestDetermineControllerStrategyNonManagedBuildDefault(t *testing.T) {
 	e := createNonManagedBuildTestEnvironment(t, v1.TraitProfileKnative)
 	strategy, err := e.DetermineControllerStrategy()
 	require.NoError(t, err)
 	assert.Equal(t, DefaultControllerStrategy, strategy)
 }
 
-func TestDetermineControllerStrategySyntheticKitForceKnative(t *testing.T) {
+func TestDetermineControllerStrategyNonManagedBuildForceKnative(t *testing.T) {
 	e := createNonManagedBuildTestEnvironment(t, v1.TraitProfileKnative)
 	e.Integration.Spec.Traits.KnativeService = &trait.KnativeServiceTrait{
 		Trait: trait.Trait{
@@ -170,6 +170,7 @@ func createTestEnvironment(t *testing.T, profile v1.TraitProfile) *Environment {
 				Phase: v1.IntegrationPhaseDeploying,
 			},
 			Spec: v1.IntegrationSpec{
+				//nolint:staticcheck
 				Profile: profile,
 				Sources: []v1.SourceSpec{
 					{
@@ -228,6 +229,7 @@ func createNonManagedBuildTestEnvironment(t *testing.T, profile v1.TraitProfile)
 				Phase:           v1.IntegrationPhaseDeploying,
 			},
 			Spec: v1.IntegrationSpec{
+				//nolint:staticcheck
 				Profile: profile,
 				Traits: v1.Traits{
 					Container: &trait.ContainerTrait{

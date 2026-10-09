@@ -72,10 +72,6 @@ func (action *monitorAction) Handle(ctx context.Context, pipe *v1.Pipe) (*v1.Pip
 	integrationProfileChanged := v1.GetIntegrationProfileAnnotation(pipe) != "" &&
 		(v1.GetIntegrationProfileAnnotation(pipe) != v1.GetIntegrationProfileAnnotation(&it))
 
-	//nolint:staticcheck
-	integrationProfileNamespaceChanged := v1.GetIntegrationProfileNamespaceAnnotation(pipe) != "" &&
-		(v1.GetIntegrationProfileNamespaceAnnotation(pipe) != v1.GetIntegrationProfileNamespaceAnnotation(&it))
-
 	sameTraits, err := trait.IntegrationAndPipeSameTraits(action.client, &it, pipe)
 	if err != nil {
 		return nil, err
@@ -96,12 +92,12 @@ func (action *monitorAction) Handle(ctx context.Context, pipe *v1.Pipe) (*v1.Pip
 
 	semanticEquality := equality.Semantic.DeepDerivative(expected.Spec, it.Spec)
 
-	if !semanticEquality || operatorIDChanged || integrationProfileChanged || integrationProfileNamespaceChanged || !sameTraits {
+	if !semanticEquality || operatorIDChanged || integrationProfileChanged || !sameTraits {
 		action.L.Info(
 			"Pipe needs a rebuild",
 			"semantic-equality", !semanticEquality,
 			"operatorid-changed", operatorIDChanged,
-			"integration-profile-changed", integrationProfileChanged || integrationProfileNamespaceChanged,
+			"integration-profile-changed", integrationProfileChanged,
 			"traits-changed", !sameTraits)
 
 		// Pipe has changed and needs rebuild
@@ -150,10 +146,11 @@ func (action *monitorAction) Handle(ctx context.Context, pipe *v1.Pipe) (*v1.Pip
 			Message: fmt.Sprintf("Integration %q is in %q phase", it.GetName(), target.Status.Phase),
 		}
 
+		//nolint:staticcheck
 		if condition := it.Status.GetCondition(v1.IntegrationConditionReady); condition != nil {
-			if condition.Pods != nil {
-				c.Pods = make([]v1.PodCondition, 0, len(condition.Pods))
-				c.Pods = append(c.Pods, condition.Pods...)
+			if condition.DeprecatedPods != nil {
+				c.DeprecatedPods = make([]v1.PodCondition, 0, len(condition.DeprecatedPods))
+				c.DeprecatedPods = append(c.DeprecatedPods, condition.DeprecatedPods...)
 			}
 		}
 
@@ -183,9 +180,10 @@ func setPipeReadyCondition(kb *v1.Pipe, it *v1.Integration) {
 			Message: message,
 		}
 
-		if condition.Pods != nil {
-			c.Pods = make([]v1.PodCondition, 0, len(condition.Pods))
-			c.Pods = append(c.Pods, condition.Pods...)
+		//nolint:staticcheck
+		if condition.DeprecatedPods != nil {
+			c.DeprecatedPods = make([]v1.PodCondition, 0, len(condition.DeprecatedPods))
+			c.DeprecatedPods = append(c.DeprecatedPods, condition.DeprecatedPods...)
 		}
 
 		kb.Status.SetConditions(c)

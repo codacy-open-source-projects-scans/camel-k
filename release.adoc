@@ -32,6 +32,11 @@ docker buildx ls | grep arm
 
 NOTE: if you don't list any available builder, if you're on Ubuntu, you can install quickly QEMU via `sudo apt-get install -y qemu qemu-user-static` and retry to list the ARM64 based builders afterward.
 
+Something else you may need to run before being able to buil ARM64 is to run the following:
+```
+docker run --privileged --rm tonistiigi/binfmt --install all
+```
+
 [[releasing-camel-k]]
 == Release Camel K
 
@@ -65,12 +70,10 @@ NOTE: you can run the script with -d option to dry run and evaluate the changes 
 ```
 git checkout release.x.y.z
 make bump VERSION=<new-version>
-make release-staging (*)
+NOTEST=1 make release-staging
 ```
 
 A docker image `camelk/camel-k:<version>` will be pushed to the https://hub.docker.com/r/camelk/camel-k/tags[staging organization] (`camelk`, not `apache`). Binary files (CLIs) will be generated as well and put in the project root directory. Also the OLM staging bundle is going to be published as `camelk/camel-k-bundle:<version>` to the https://hub.docker.com/r/camelk/camel-k/tags[staging organization].
-
-* you can skip unit testing prepending `NOTEST=1` if the last build was successfull.
 
 [[testing]]
 === Do some testing
@@ -87,7 +90,7 @@ Camel K Client 2.0.0
 If the version retrieved is the one expected you can run an installation procedure:
 
 ```
-kustomize build github.com/apache/camel-k/install/overlays/kubernetes/descoped?ref=v<version> | sed 's#apache/camel-k#camelk/camel-k#g' | kubectl apply -f - --server-side
+kustomize build github.com/apache/camel-k/install/overlays/all-namespaces?ref=v<version> | sed 's#apache/camel-k#camelk/camel-k#g' | kubectl apply -f - --server-side
 ```
 
 Make some test and if all is in order, you can upload the sources and CLIs to the dist/dev repository in ASF the staged artifacts, in order to link them in the release vote communication.
@@ -107,7 +110,7 @@ You should also manually add some text to explain how to test the staging artifa
 This release is on vote. It is using a **staging** operator image published as `docker.io/camelk/camel-k:<version>`. The available platforms are AMD64 and ARM64. You can test it following these instructions:
 ### Kubectl
 ```
-kustomize build github.com/apache/camel-k/install/overlays/kubernetes/descoped?ref=v<version> | sed 's#apache/camel-k#camelk/camel-k#g' | kubectl apply -f - --server-side
+kustomize build github.com/apache/camel-k/install/overlays/all-namespaces?ref=v<version> | sed 's#apache/camel-k#camelk/camel-k#g' | kubectl apply -f - --server-side
 ```
 ### Helm
 ```
@@ -194,24 +197,18 @@ An Helm chart was generated during the staging procedure. Use the commit ID to c
 
 After this is done, wait for them to be available on https://hub.helm.sh/ (generally within some hour after the cherry-pick).
 
-=== Homebrew
-
-The https://brew.sh/[HomeBrew] formula for _kamel_ must be synced to download and build the latest version of https://github.com/apache/camel-k[Camel K], so it can be easily installed on _macOs_ and _Linux_ platforms.
-
-NOTE: it seems it exist an automatic process in charge to update Brew formula as soon as there is a release. Check it out if after the release, https://github.com/Homebrew/homebrew-core/pulls?q=is%3Apr+kamel+is%3Aclosed[a pull request with the new version for kamel] is automatically done.
-
 == Finalize the release
 
 The release is complete, we only need to make it official:
 
 === Official Apache documentation page
 
-The version of Camel K and the main related dependencies are scraped automatically in a Github Action. You only need to provide the LTS parameter in the related `release` branch, when the release is marked as LTS (such as in https://github.com/apache/camel-k/blob/f15124949e43bb859d07f555b9e510956d6ed823/docs/antora.yml#L30). You also need to make sure that the `antora.yml` file has correctly set the version (which may be still set as `main`) and the `prerelease` tag (which should be removed as we are officially releasing).
+The version of Camel K and the main related dependencies are scraped automatically in a Github Action.
 
 After the vote has passed you should update camel-website project:
 
 1. update the https://github.com/apache/camel-website/blob/main/antora-playbook-snippets/antora-playbook.yml[camel-website `antora-playbook.yml` `content.sources` section] for camel-k to use the newly released versions, replacing the previous released version or any unsupported version.
-2. update the https://github.com/apache/camel-k/blob/release-2.5.x/docs/antora.yml[camel k release branch] antora configuration.
+2. update the https://github.com/apache/camel-k/blob/release-2.5.x/docs/antora.yml[camel k release branch] antora configuration (proper version name, last release and remove pre-release labels).
 3. create an entry in the release section of Camel website project: https://github.com/apache/camel-website/tree/main/content/releases/k - you can use any previous document as a reference.
 4. provide a blog post announcing the release
 
@@ -222,10 +219,10 @@ You can edit the draft release and set it to final, marking as last release. You
 
 ```
 ## Installation procedure
-Install the operator looking at the official https://camel.apache.org/camel-k/<2.5.x>/installation/installation.html[Camel K operator <version> installation procedure].
+Install the operator looking at the official [Camel K operator <version> installation procedure](https://camel.apache.org/camel-k/<2.5.x>/installation/installation.html).
 ```
 
-Perform a simple test to verify that everything is in place (running a "Hello World" integration after an installation done with, as an example `kubectl apply -k github.com/apache/camel-k/install/overlays/kubernetes/descoped?ref=v<version> --server-side`). Do a simple final test.
+Perform a simple test to verify that everything is in place (running a "Hello World" integration after an installation done with, as an example `kubectl apply -k github.com/apache/camel-k/install/overlays/all-namespaces?ref=v<version> --server-side`). Do a simple final test.
 
 === Announce the release
 

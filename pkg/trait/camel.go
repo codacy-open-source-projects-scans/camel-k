@@ -18,21 +18,25 @@ limitations under the License.
 package trait
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	"github.com/apache/camel-k/v2/pkg/platform"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
 	"github.com/apache/camel-k/v2/pkg/util/defaults"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
 	"github.com/apache/camel-k/v2/pkg/util/property"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const (
@@ -47,7 +51,7 @@ type camelTrait struct {
 
 	// private configuration used only internally
 	runtimeVersion  string
-	runtimeProvider string
+	runtimeProvider v1.RuntimeProvider
 }
 
 func newCamelTrait() Trait {
@@ -71,30 +75,19 @@ func (t *camelTrait) Matches(trait Trait) bool {
 }
 
 func (t *camelTrait) Configure(e *Environment) (bool, *TraitCondition, error) {
-	if e.Integration != nil && e.Integration.IsSynthetic() {
-		return false, NewIntegrationConditionPlatformDisabledWithMessage("Camel", "synthetic integration"), nil
+	if t.RuntimeProvider == "" {
+		t.runtimeProvider = determineRuntimeProvider(e)
+	} else {
+		t.runtimeProvider = v1.RuntimeProvider(t.RuntimeProvider)
 	}
-
 	if t.RuntimeVersion == "" {
-		if runtimeVersion, err := determineRuntimeVersion(e); err != nil {
-			return false, nil, err
-		} else {
-			t.runtimeVersion = runtimeVersion
-		}
+		t.runtimeVersion = determineRuntimeVersion(e)
 	} else {
 		t.runtimeVersion = t.RuntimeVersion
 	}
 
-	if t.RuntimeProvider == "" {
-		t.runtimeProvider = "quarkus"
-	} else {
-		t.runtimeProvider = t.RuntimeProvider
-	}
-
 	var cond *TraitCondition
-	//nolint: staticcheck
-	if (e.Integration != nil && (!e.Integration.IsManagedBuild() || e.Integration.IsGitBuild())) ||
-		(e.IntegrationKit != nil && e.IntegrationKit.IsSynthetic()) {
+	if e.Integration != nil && (!e.Integration.IsManagedBuild() || e.Integration.IsGitBuild()) {
 		// We set a condition to warn the user the catalog used to run the Integration
 		// may differ from the runtime version which we don't control
 		cond = NewIntegrationCondition(
@@ -125,8 +118,8 @@ func (t *camelTrait) Apply(e *Environment) error {
 	if e.Integration != nil {
 		if e.Integration.IsManagedBuild() && !e.Integration.IsGitBuild() {
 			// If it's not managed we don't know which is the runtime running
-			e.Integration.Status.RuntimeVersion = e.CamelCatalog.Runtime.Version
-			e.Integration.Status.RuntimeProvider = e.CamelCatalog.Runtime.Provider
+			e.Integration.Status.RuntimeVersion = t.runtimeVersion
+			e.Integration.Status.RuntimeProvider = t.runtimeProvider
 		}
 		e.Integration.Status.Catalog = &v1.Catalog{
 			Version:  e.CamelCatalog.Runtime.Version,
@@ -134,11 +127,8 @@ func (t *camelTrait) Apply(e *Environment) error {
 		}
 	}
 	if e.IntegrationKit != nil {
-		//nolint: staticcheck
-		if !e.IntegrationKit.IsSynthetic() {
-			e.IntegrationKit.Status.RuntimeVersion = e.CamelCatalog.Runtime.Version
-			e.IntegrationKit.Status.RuntimeProvider = e.CamelCatalog.Runtime.Provider
-		}
+		e.IntegrationKit.Status.RuntimeVersion = t.runtimeVersion
+		e.IntegrationKit.Status.RuntimeProvider = t.runtimeProvider
 		e.IntegrationKit.Status.Catalog = &v1.Catalog{
 			Version:  e.CamelCatalog.Runtime.Version,
 			Provider: e.CamelCatalog.Runtime.Provider,
@@ -161,12 +151,12 @@ func (t *camelTrait) loadOrCreateCatalog(e *Environment) error {
 
 	runtime := v1.RuntimeSpec{
 		Version:  t.runtimeVersion,
-		Provider: v1.RuntimeProvider(t.runtimeProvider),
+		Provider: t.runtimeProvider,
 	}
 	if runtime.Provider == v1.RuntimeProviderPlainQuarkus {
 		// We need this workaround to load the last existing catalog
 		// TODO: this part will be subject to future refactoring
-		runtime.Version = defaults.DefaultRuntimeVersion
+		runtime.Version = defaults.CamelKRuntimeCatalogVersion
 	}
 
 	catalog, err := camel.LoadCatalog(e.Ctx, e.Client, catalogNamespace, runtime)
@@ -181,17 +171,79 @@ func (t *camelTrait) loadOrCreateCatalog(e *Environment) error {
 		if exactVersionRegexp.MatchString(t.runtimeVersion) {
 			mavenSpec := e.Platform.Maven.MavenSpec
 			var extraRepositories []string
-			if e.Integration != nil && e.Integration.Spec.Repositories != nil {
-				extraRepositories = append(extraRepositories, e.Integration.Spec.Repositories...)
+			// If the resource is targeting a specific operator, then, we must
+			// provide the same setting to the catalog
+			operatorId := ""
+			if e.Integration != nil {
+				if e.Integration.GetOperatorID() != "" {
+					operatorId = e.Integration.GetOperatorID()
+				}
+				if e.Integration.Spec.Repositories != nil {
+					extraRepositories = append(extraRepositories, e.Integration.Spec.Repositories...)
+				}
 			}
-			if e.IntegrationKit != nil && e.IntegrationKit.Spec.Repositories != nil {
-				extraRepositories = append(extraRepositories, e.IntegrationKit.Spec.Repositories...)
+			if e.IntegrationKit != nil {
+				if e.IntegrationKit.GetOperatorID() != "" {
+					operatorId = e.IntegrationKit.GetOperatorID()
+				}
+				if e.IntegrationKit.Spec.Repositories != nil {
+					extraRepositories = append(extraRepositories, e.IntegrationKit.Spec.Repositories...)
+				}
 			}
+			// verify extra repos are allowed
+			for _, repo := range extraRepositories {
+				if !platform.IsMavenRepoAllowed(repo) {
+					return fmt.Errorf("maven repository %s is not allowed by the operator", repo)
+				}
+			}
+
 			catalog, err = camel.CreateCatalog(e.Ctx, e.Client, catalogNamespace,
-				mavenSpec, e.Platform.BuildTimeout, runtime, extraRepositories)
+				mavenSpec, platform.DefaultBuildTimeout, runtime, extraRepositories, operatorId)
 			if err != nil {
 				return err
 			}
+		}
+
+		// If the catalog is a plain-quarkus one, then, we need to wait for it to be available
+		// as the logic is that it is cloned after a legacy camel k runtime catalog.
+		// NOTE: the CamelCatalog is meant to disappear anytime soon, so we can maintain this workaround
+		// as long as the CamelCatalog is supported
+		if runtime.Provider == v1.RuntimeProviderPlainQuarkus {
+			err = wait.PollUntilContextTimeout(
+				e.Ctx,
+				//nolint:mnd
+				2*time.Second,
+				1*time.Minute,
+				true,
+				func(ctx context.Context) (bool, error) {
+					c, err := camel.LoadCatalogFixedRuntime(
+						ctx,
+						e.Client,
+						catalogNamespace,
+						runtime,
+					)
+
+					if apierrors.IsNotFound(err) {
+						return false, nil
+					}
+
+					if err != nil {
+						return false, err
+					}
+
+					if c == nil {
+						return false, nil
+					}
+
+					catalog = c
+
+					return true, nil
+				},
+			)
+		}
+
+		if err != nil {
+			return err
 		}
 	}
 
@@ -200,32 +252,49 @@ func (t *camelTrait) loadOrCreateCatalog(e *Environment) error {
 			runtime.Version,
 			runtime.Provider)
 	}
+
 	if runtime.Provider == v1.RuntimeProviderPlainQuarkus {
 		// We need this workaround to load the last existing catalog
 		// TODO: this part will be subject to future refactoring
 		catalog.Runtime.Version = t.runtimeVersion
 	}
-
 	e.CamelCatalog = catalog
 
 	return nil
 }
 
-func determineRuntimeVersion(e *Environment) (string, error) {
+func determineRuntimeVersion(e *Environment) string {
 	if e.Integration != nil && e.Integration.Status.RuntimeVersion != "" {
-		return e.Integration.Status.RuntimeVersion, nil
+		return e.Integration.Status.RuntimeVersion
 	}
 	if e.IntegrationKit != nil && e.IntegrationKit.Status.RuntimeVersion != "" {
-		return e.IntegrationKit.Status.RuntimeVersion, nil
+		return e.IntegrationKit.Status.RuntimeVersion
 	}
 	if e.IntegrationProfile != nil && e.IntegrationProfile.Spec.Build.RuntimeVersion != "" {
-		return e.IntegrationProfile.Spec.Build.RuntimeVersion, nil
+		return e.IntegrationProfile.Spec.Build.RuntimeVersion
 	}
 	if e.Platform.BuildRuntimeVersion != "" {
-		return e.Platform.BuildRuntimeVersion, nil
+		return e.Platform.BuildRuntimeVersion
 	}
 
-	return "", errors.New("unable to determine runtime version")
+	return defaults.DefaultRuntimeVersion
+}
+
+func determineRuntimeProvider(e *Environment) v1.RuntimeProvider {
+	if e.Integration != nil && e.Integration.Status.RuntimeProvider != "" {
+		return e.Integration.Status.RuntimeProvider
+	}
+	if e.IntegrationKit != nil && e.IntegrationKit.Status.RuntimeProvider != "" {
+		return e.IntegrationKit.Status.RuntimeProvider
+	}
+	if e.IntegrationProfile != nil && e.IntegrationProfile.Spec.Build.RuntimeProvider != "" {
+		return e.IntegrationProfile.Spec.Build.RuntimeProvider
+	}
+	if e.Platform.BuildRuntimeProvider != "" {
+		return e.Platform.BuildRuntimeProvider
+	}
+
+	return v1.RuntimeProvider(defaults.DefaultRuntimeProvider)
 }
 
 func (t *camelTrait) computeUserProperties(e *Environment) []ctrl.Object {
@@ -239,7 +308,7 @@ func (t *camelTrait) computeUserProperties(e *Environment) []ctrl.Object {
 	var userPropertiesSb238 strings.Builder
 	for _, prop := range e.collectConfigurationPairs("property") {
 		// properties in resource configuration are expected to be pre-encoded using properties format
-		userPropertiesSb238.WriteString(fmt.Sprintf("%s=%s\n", prop.Name, prop.Value))
+		fmt.Fprintf(&userPropertiesSb238, "%s=%s\n", prop.Name, prop.Value)
 	}
 	userProperties += userPropertiesSb238.String()
 
@@ -248,7 +317,7 @@ func (t *camelTrait) computeUserProperties(e *Environment) []ctrl.Object {
 		var userPropertiesSb245 strings.Builder
 		for _, prop := range t.Properties {
 			k, v := property.SplitPropertyFileEntry(prop)
-			userPropertiesSb245.WriteString(fmt.Sprintf("%s=%s\n", k, v))
+			fmt.Fprintf(&userPropertiesSb245, "%s=%s\n", k, v)
 		}
 		userProperties += userPropertiesSb245.String()
 	}
@@ -257,18 +326,14 @@ func (t *camelTrait) computeUserProperties(e *Environment) []ctrl.Object {
 		maps = append(
 			maps,
 			&corev1.ConfigMap{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "ConfigMap",
-					APIVersion: "v1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      e.Integration.Name + "-user-properties",
-					Namespace: e.Integration.Namespace,
-					Labels: map[string]string{
-						v1.IntegrationLabel:                e.Integration.Name,
-						"camel.apache.org/properties.type": "user",
-						kubernetes.ConfigMapTypeLabel:      CamelPropertiesType,
-					},
+				Kind:       "ConfigMap",
+				APIVersion: "v1",
+				Name:       e.Integration.Name + "-user-properties",
+				Namespace:  e.Integration.Namespace,
+				Labels: map[string]string{
+					v1.IntegrationLabel:                e.Integration.Name,
+					"camel.apache.org/properties.type": "user",
+					kubernetes.ConfigMapTypeLabel:      CamelPropertiesType,
 				},
 				Data: map[string]string{
 					"application.properties": userProperties,
@@ -284,22 +349,18 @@ func (t *camelTrait) computeUserProperties(e *Environment) []ctrl.Object {
 		}
 
 		cm := corev1.ConfigMap{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ConfigMap",
-				APIVersion: "v1",
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+			Name:       fmt.Sprintf("%s-source-%03d", e.Integration.Name, i),
+			Namespace:  e.Integration.Namespace,
+			Labels: map[string]string{
+				v1.IntegrationLabel: e.Integration.Name,
 			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-source-%03d", e.Integration.Name, i),
-				Namespace: e.Integration.Namespace,
-				Labels: map[string]string{
-					v1.IntegrationLabel: e.Integration.Name,
-				},
-				Annotations: map[string]string{
-					sourceLanguageAnnotation:    string(s.InferLanguage()),
-					sourceLoaderAnnotation:      s.Loader,
-					sourceNameAnnotation:        s.Name,
-					sourceCompressionAnnotation: strconv.FormatBool(s.Compression),
-				},
+			Annotations: map[string]string{
+				sourceLanguageAnnotation:    string(s.InferLanguage()),
+				sourceLoaderAnnotation:      s.Loader,
+				sourceNameAnnotation:        s.Name,
+				sourceCompressionAnnotation: strconv.FormatBool(s.Compression),
 			},
 			Data: map[string]string{
 				"content": s.Content,

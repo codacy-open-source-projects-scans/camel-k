@@ -51,8 +51,8 @@ func (action *initializeAction) CanHandle(kit *v1.IntegrationKit) bool {
 func (action *initializeAction) Handle(ctx context.Context, kit *v1.IntegrationKit) (*v1.IntegrationKit, error) {
 	action.L.Info("Initializing IntegrationKit")
 	if kit.Spec.Image != "" {
-		// Synthetic Kit
-		action.L.Info("Synthetic Kit, won't be able to build or monitor this one.")
+		// The user provided the image directly, so there is nothing to build.
+		action.L.Info("Kit with a user provided image, won't be able to build or monitor this one.")
 		kit.Status.Phase = v1.IntegrationKitPhaseReady
 		kit.Status.Image = kit.Spec.Image
 
@@ -83,7 +83,7 @@ func (action *initializeAction) image(ctx context.Context, env *trait.Environmen
 	if env.CamelCatalog.GetRuntimeProvider() == v1.RuntimeProviderPlainQuarkus {
 		// We need this workaround to load the last existing catalog
 		// TODO: this part will be subject to future refactoring
-		catalogName = "camel-catalog-quarkus-" + strings.ToLower(defaults.DefaultRuntimeVersion)
+		catalogName = "camel-catalog-quarkus-" + strings.ToLower(defaults.CamelKRuntimeCatalogVersion)
 	}
 	// Wait for CamelCatalog to be ready
 	catalog, err := kubernetes.GetCamelCatalog(

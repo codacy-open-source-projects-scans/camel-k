@@ -1,7 +1,9 @@
 [[operator-monitoring]]
 = Camel K Operator Monitoring
 
-NOTE: The Camel K monitoring architecture relies on https://prometheus.io[Prometheus] and the eponymous operator. Make sure you've checked the xref:observability/monitoring.adoc#prerequisites[Camel K monitoring prerequisites].
+In this chapter we provide some example how to provide a monitoring based on Prometheus for your Camel K operator main metrics.
+
+WARNING: this is a guide that mostly depends on Prometheus. The goal is to provide some basic example more than an exhaustive guide. Please, refer to Prometheus documentation for a full production configuration.
 
 [[installation]]
 == Installation
@@ -16,6 +18,8 @@ kubectl apply -k github.com/apache/camel-k/install/base/config/prometheus?ref=v{
 ----
 
 NOTE: change the ref value with the installation version tag you want to install.
+
+IMPORTANT: The provided Prometheus configuration does not create a `NetworkPolicy`. As a post-installation step, cluster administrators should https://kubernetes.io/docs/concepts/services-networking/network-policies/[configure a network policy] that only allows the Prometheus scraper to access the operator metrics port. Adapt the namespace and pod selectors to your Prometheus deployment, and verify that the cluster networking solution supports `NetworkPolicy` resources.
 
 However, most of the time you want to probably configure and add different thresholds and KPIs in order to monitor in a properly manner your installation.
 

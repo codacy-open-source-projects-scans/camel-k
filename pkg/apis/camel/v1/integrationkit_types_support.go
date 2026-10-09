@@ -32,23 +32,17 @@ const IntegrationKitLabel = "camel.apache.org/integrationkit"
 
 func NewIntegrationKit(namespace string, name string) *IntegrationKit {
 	return &IntegrationKit{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: SchemeGroupVersion.String(),
-			Kind:       IntegrationKitKind,
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
+		APIVersion: SchemeGroupVersion.String(),
+		Kind:       IntegrationKitKind,
+		Namespace:  namespace,
+		Name:       name,
 	}
 }
 
 func NewIntegrationKitList() IntegrationKitList {
 	return IntegrationKitList{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: SchemeGroupVersion.String(),
-			Kind:       IntegrationKitKind,
-		},
+		APIVersion: SchemeGroupVersion.String(),
+		Kind:       IntegrationKitKind,
 	}
 }
 
@@ -58,6 +52,11 @@ func (in *IntegrationKitSpec) Configurations() []ConfigurationSpec {
 	}
 
 	return in.Configuration
+}
+
+// GetOperatorID returns the operator id as an annotation.
+func (in *IntegrationKit) GetOperatorID() string {
+	return GetAnnotation(OperatorIDAnnotation, in)
 }
 
 // SetOperatorID sets the given operator id as an annotation.
@@ -109,13 +108,6 @@ func (in *IntegrationKit) HasHigherPriorityThan(kit *IntegrationKit) bool {
 // IsExternal returns true for external IntegrationKits (integration kit not created by the operator).
 func (in *IntegrationKit) IsExternal() bool {
 	return in.Labels[IntegrationKitTypeLabel] == IntegrationKitTypeExternal
-}
-
-// IsSynthetic returns true for synthetic IntegrationKits.
-//
-// Deprecated: synthetic Integration Kits are replaced by syntentic Integrations.
-func (in *IntegrationKit) IsSynthetic() bool {
-	return in.Labels[IntegrationKitTypeLabel] == IntegrationKitTypeSynthetic
 }
 
 // HasCapability returns true if the Kit is enabled with such a capability.

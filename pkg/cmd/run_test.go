@@ -105,8 +105,6 @@ func TestRunNoFlag(t *testing.T) {
 	// Check default expected values
 	assert.False(t, runCmdOptions.Wait)
 	assert.False(t, runCmdOptions.Logs)
-	assert.False(t, runCmdOptions.Sync)
-	assert.False(t, runCmdOptions.Dev)
 	assert.True(t, runCmdOptions.UseFlows)
 	assert.False(t, runCmdOptions.Compression)
 	assert.False(t, runCmdOptions.Save)
@@ -137,23 +135,6 @@ func TestRunDependencyFlag(t *testing.T) {
 	assert.Equal(t, "dependency1", runCmdOptions.Dependencies[0])
 	assert.Equal(t, "dependency2", runCmdOptions.Dependencies[1])
 	assert.Equal(t, "dependency3", runCmdOptions.Dependencies[2])
-}
-
-func TestRunDevFlag(t *testing.T) {
-	runCmdOptions, rootCmd, _ := initializeRunCmdOptions(t)
-	_, err := ExecuteCommand(rootCmd, cmdRun, "--dev", integrationSource)
-	require.NoError(t, err)
-	assert.True(t, runCmdOptions.Dev)
-}
-
-func TestRunDevModeOutputFlag(t *testing.T) {
-	runCmdOptions, rootCmd, _ := initializeRunCmdOptions(t)
-	_, err := ExecuteCommand(rootCmd, cmdRun, "--dev", "-o", "yaml", integrationSource)
-	assert.True(t, runCmdOptions.Dev)
-	assert.Equal(t, "yaml", runCmdOptions.OutputFormat)
-	require.Error(t, err)
-	assert.Equal(t, "cannot use --dev with -o/--output option",
-		err.Error())
 }
 
 func TestRunEnvFlag(t *testing.T) {
@@ -382,23 +363,16 @@ func TestRunSourceFlag(t *testing.T) {
 	assert.Equal(t, "source1", runCmdOptions.Sources[0])
 }
 
-func TestRunSyncFlag(t *testing.T) {
-	runCmdOptions, rootCmd, _ := initializeRunCmdOptions(t)
-	_, err := ExecuteCommand(rootCmd, cmdRun, "--sync", integrationSource)
-	require.NoError(t, err)
-	assert.True(t, runCmdOptions.Sync)
-}
-
 func TestRunExistingTraitFlag(t *testing.T) {
 	runCmdOptions, rootCmd, _ := initializeRunCmdOptions(t)
 	_, err := ExecuteCommand(rootCmd, cmdRun,
 		"--trait", "jvm.enabled",
-		"--trait", "logging.enabled",
+		"--trait", "container.enabled",
 		integrationSource)
 	require.NoError(t, err)
 	assert.Len(t, runCmdOptions.Traits, 2)
 	assert.Equal(t, "jvm.enabled", runCmdOptions.Traits[0])
-	assert.Equal(t, "logging.enabled", runCmdOptions.Traits[1])
+	assert.Equal(t, "container.enabled", runCmdOptions.Traits[1])
 }
 
 func TestRunMissingTraitFlag(t *testing.T) {
@@ -418,7 +392,7 @@ func TestConfigureTraits(t *testing.T) {
 		"--trait", "affinity.pod-affinity=false",
 		"--trait", "environment.container-meta=false",
 		"--trait", "prometheus.pod-monitor=false",
-		"--trait", "telemetry.auto=true",
+		"--trait", "health.liveness-probe-enabled=true",
 		"example.js")
 	if err != nil {
 		t.Error(err)
@@ -439,7 +413,7 @@ func TestConfigureTraits(t *testing.T) {
 	assertTraitConfiguration(t, traits.Affinity, &traitv1.AffinityTrait{PodAffinity: ptr.To(false)})
 	assertTraitConfiguration(t, traits.Environment, &traitv1.EnvironmentTrait{ContainerMeta: ptr.To(false)})
 	assertTraitConfiguration(t, traits.Prometheus, &traitv1.PrometheusTrait{PodMonitor: ptr.To(false)})
-	assertTraitConfiguration(t, traits.Telemetry, &traitv1.TelemetryTrait{Auto: ptr.To(true)})
+	assertTraitConfiguration(t, traits.Health, &traitv1.HealthTrait{LivenessProbeEnabled: ptr.To(true)})
 }
 
 func assertTraitConfiguration(t *testing.T, trait interface{}, expected interface{}) {
@@ -578,8 +552,6 @@ func TestOutputYaml(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf(`apiVersion: camel.apache.org/v1
 kind: Integration
 metadata:
-  annotations:
-    camel.apache.org/operator.id: camel-k
   name: %s
 spec:
   sources:
@@ -612,8 +584,6 @@ func TestTrait(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf(`apiVersion: camel.apache.org/v1
 kind: Integration
 metadata:
-  annotations:
-    camel.apache.org/operator.id: camel-k
   name: %s
 spec:
   sources:
@@ -919,8 +889,6 @@ func TestSelfManagedBuildIntegration(t *testing.T) {
 	assert.Equal(t, `apiVersion: camel.apache.org/v1
 kind: Integration
 metadata:
-  annotations:
-    camel.apache.org/operator.id: camel-k
   name: my-app-v1
 spec:
   traits:
@@ -942,8 +910,6 @@ func TestGitRepoIntegration(t *testing.T) {
 	assert.Equal(t, `apiVersion: camel.apache.org/v1
 kind: Integration
 metadata:
-  annotations:
-    camel.apache.org/operator.id: camel-k
   name: my-it
 spec:
   git:
@@ -962,8 +928,6 @@ func TestGitTagIntegration(t *testing.T) {
 	assert.Equal(t, `apiVersion: camel.apache.org/v1
 kind: Integration
 metadata:
-  annotations:
-    camel.apache.org/operator.id: camel-k
   name: my-it
 spec:
   git:
@@ -983,8 +947,6 @@ func TestGitBranchIntegration(t *testing.T) {
 	assert.Equal(t, `apiVersion: camel.apache.org/v1
 kind: Integration
 metadata:
-  annotations:
-    camel.apache.org/operator.id: camel-k
   name: my-it
 spec:
   git:
@@ -1004,8 +966,6 @@ func TestGitCommitIntegration(t *testing.T) {
 	assert.Equal(t, `apiVersion: camel.apache.org/v1
 kind: Integration
 metadata:
-  annotations:
-    camel.apache.org/operator.id: camel-k
   name: my-it
 spec:
   git:

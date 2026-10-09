@@ -29,10 +29,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 
-	serving "knative.dev/serving/pkg/apis/serving/v1"
-
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	serving "github.com/apache/camel-k/v2/pkg/apis/duck/knative/serving/v1"
 	"github.com/apache/camel-k/v2/pkg/util"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
 	"github.com/apache/camel-k/v2/pkg/util/digest"
@@ -66,6 +65,7 @@ type containerTrait struct {
 	traitv1.ContainerTrait `property:",squash"`
 
 	containerPorts []containerPort
+	expose         *bool
 }
 
 // containerPort is supporting port parsing.
@@ -93,7 +93,7 @@ func (t *containerTrait) Configure(e *Environment) (bool, *TraitCondition, error
 	if ptr.Deref(t.Auto, true) {
 		if t.Expose == nil {
 			if e.Resources.GetServiceForIntegration(e.Integration) != nil {
-				t.Expose = ptr.To(true)
+				t.expose = new(true)
 			}
 		}
 	}
@@ -214,7 +214,7 @@ func (t *containerTrait) configureContainer(e *Environment) error {
 		// Knative does not like anybody touching the container ports
 		t.configurePorts(&container)
 	}
-	if knative || ptr.Deref(t.Expose, false) {
+	if knative || t.isExpose() {
 		t.configureService(e, &container, knative)
 	}
 	t.configureCapabilities(e)
@@ -356,9 +356,7 @@ func (t *containerTrait) setSecurityContext(e *Environment, container *corev1.Co
 		return err
 	}
 
-	t.RunAsUser = runAsUser
-
-	sc.RunAsUser = t.RunAsUser
+	sc.RunAsUser = runAsUser
 	container.SecurityContext = &sc
 
 	return nil
@@ -384,6 +382,14 @@ func (t *containerTrait) getUser(e *Environment) (*int64, error) {
 	}
 
 	return runAsUser, nil
+}
+
+func (t *containerTrait) isExpose() bool {
+	if t.Expose != nil {
+		return *t.Expose
+	}
+
+	return ptr.Deref(t.expose, false)
 }
 
 func (t *containerTrait) getPort() int32 {
@@ -420,7 +426,7 @@ func (t *containerTrait) getContainerName() string {
 
 func (t *containerTrait) getRunAsNonRoot() *bool {
 	if t.RunAsNonRoot == nil {
-		return ptr.To(defaultContainerRunAsNonRoot)
+		return new(defaultContainerRunAsNonRoot)
 	}
 
 	return t.RunAsNonRoot
@@ -436,7 +442,7 @@ func (t *containerTrait) getSeccompProfileType() corev1.SeccompProfileType {
 
 func (t *containerTrait) getAllowPrivilegeEscalation() *bool {
 	if t.AllowPrivilegeEscalation == nil {
-		return ptr.To(defaultContainerAllowPrivilegeEscalation)
+		return new(defaultContainerAllowPrivilegeEscalation)
 	}
 
 	return t.AllowPrivilegeEscalation

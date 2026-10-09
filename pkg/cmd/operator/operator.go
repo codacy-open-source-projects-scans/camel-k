@@ -38,9 +38,9 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
@@ -52,19 +52,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
-
 	"github.com/apache/camel-k/v2/pkg/apis"
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
+	servingv1 "github.com/apache/camel-k/v2/pkg/apis/duck/knative/serving/v1"
 	"github.com/apache/camel-k/v2/pkg/client"
 	"github.com/apache/camel-k/v2/pkg/controller"
-	"github.com/apache/camel-k/v2/pkg/controller/synthetic"
 	"github.com/apache/camel-k/v2/pkg/install"
 	"github.com/apache/camel-k/v2/pkg/platform"
 	"github.com/apache/camel-k/v2/pkg/util"
 	"github.com/apache/camel-k/v2/pkg/util/defaults"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
 	logutil "github.com/apache/camel-k/v2/pkg/util/log"
+)
+
+const (
+	devRegistryselfSignedKey = "/tmp/registry.key"
+	devRegistryselfSignedCrt = "/tmp/registry.crt"
 )
 
 var log = logutil.Log.WithName("cmd")
@@ -74,6 +77,7 @@ func printVersion() {
 	log.Info(fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH))
 	log.Info(fmt.Sprintf("Camel K Operator Version: %v", defaults.Version))
 	log.Info(fmt.Sprintf("Camel K Default Runtime Version: %v", defaults.DefaultRuntimeVersion))
+	log.Info(fmt.Sprintf("Camel K Default Runtime Provider: %v", defaults.DefaultRuntimeProvider))
 	log.Info(fmt.Sprintf("Camel K Git Commit: %v", defaults.GitCommit))
 	log.Info(fmt.Sprintf("Camel K Operator ID: %v", defaults.OperatorID()))
 
@@ -158,7 +162,9 @@ func Run(healthPort, monitoringPort int32, leaderElection bool, leaderElectionID
 
 	// Set the operator container image if it runs in-container
 	platform.OperatorImage, err = getOperatorImage(ctx, bootstrapClient)
-	exitOnError(err, "cannot get operator container image")
+	if err != nil {
+		log.Info("WARN: Camel K operator is running outside a container. Some features (eg, running build in pod mode) may be disabled!")
+	}
 
 	if !leaderElection {
 		log.Info("Leader election is disabled!")
@@ -172,11 +178,15 @@ func Run(healthPort, monitoringPort int32, leaderElection bool, leaderElectionID
 		Label: labelsSelector,
 	}
 
+	cacheConfigs := getNamespacesSelector(operatorNamespace, watchNamespace)
 	if !platform.IsCurrentOperatorGlobal() {
+		log.Infof("This operator is configured to watch only %s namespace(s)", watchNamespace)
 		selector = cache.ByObject{
 			Label:      labelsSelector,
-			Namespaces: getNamespacesSelector(operatorNamespace, watchNamespace),
+			Namespaces: cacheConfigs,
 		}
+	} else {
+		log.Info("This operator is global and will watch all namespaces!")
 	}
 
 	selectors := map[ctrl.Object]cache.ByObject{
@@ -185,12 +195,18 @@ func Run(healthPort, monitoringPort int32, leaderElection bool, leaderElectionID
 		&batchv1.Job{}:       selector,
 	}
 
-	if ok, err := kubernetes.IsAPIResourceInstalled(bootstrapClient, servingv1.SchemeGroupVersion.String(), reflect.TypeFor[servingv1.Service]().Name()); ok && err == nil {
+	if ok, err := kubernetes.IsAPIResourceInstalled(bootstrapClient, servingv1.SchemeGroupVersion.String(),
+		reflect.TypeFor[servingv1.Service]().Name()); ok && err == nil {
 		selectors[&servingv1.Service{}] = selector
 	}
 
-	if ok, err := kubernetes.IsAPIResourceInstalled(bootstrapClient, batchv1.SchemeGroupVersion.String(), reflect.TypeFor[batchv1.CronJob]().Name()); ok && err == nil {
+	if ok, err := kubernetes.IsAPIResourceInstalled(bootstrapClient, batchv1.SchemeGroupVersion.String(),
+		reflect.TypeFor[batchv1.CronJob]().Name()); ok && err == nil {
 		selectors[&batchv1.CronJob{}] = selector
+	}
+
+	if platform.CertManagerInstalled, err = kubernetes.IsAPIResourceInstalled(bootstrapClient, "cert-manager.io/v1", "ClusterIssuer"); err != nil {
+		log.Error(err, "failed to check for cert-manager presence, assuming not installed")
 	}
 
 	options := cache.Options{
@@ -198,7 +214,7 @@ func Run(healthPort, monitoringPort int32, leaderElection bool, leaderElectionID
 	}
 
 	if !platform.IsCurrentOperatorGlobal() {
-		options.DefaultNamespaces = getNamespacesSelector(operatorNamespace, watchNamespace)
+		options.DefaultNamespaces = cacheConfigs
 	}
 
 	mgr, err := manager.New(cfg, manager.Options{
@@ -214,6 +230,8 @@ func Run(healthPort, monitoringPort int32, leaderElection bool, leaderElectionID
 	exitOnError(err, "")
 
 	log.Info("Configuring manager")
+	// Initialize environment platform configuration
+	platform.InitPlatform()
 	exitOnError(mgr.AddHealthzCheck("health-probe", healthz.Ping), "Unable add liveness check")
 	exitOnError(apis.AddToScheme(mgr.GetScheme()), "")
 	ctrlClient, err := client.FromManager(mgr)
@@ -223,24 +241,32 @@ func Run(healthPort, monitoringPort int32, leaderElection bool, leaderElectionID
 	log.Info("Installing operator resources")
 	installCtx, installCancel := context.WithTimeout(ctx, 1*time.Minute)
 	defer installCancel()
-	install.OperatorStartupOptionalTools(installCtx, bootstrapClient, watchNamespace, operatorNamespace, log)
+	install.OperatorStartupOptionalTools(installCtx, bootstrapClient, log)
 
-	synthEnvVal, synth := os.LookupEnv("CAMEL_K_SYNTHETIC_INTEGRATIONS")
-	if synth && synthEnvVal == "true" {
-		log.Info("Starting the synthetic Integration manager. " +
-			"WARNING: this is a deprecated feature and will be removed in future versions, use Camel Dashboard project instead.")
-		exitOnError(synthetic.ManageSyntheticIntegrations(ctx, ctrlClient, mgr.GetCache()), "synthetic Integration manager error")
+	devRegistryEnvVal, devReg := os.LookupEnv("ENABLE_DEV_REGISTRY")
+	if devReg && devRegistryEnvVal == "true" {
+		setupDevContainerRegistry(ctx, bootstrapClient, operatorNamespace)
 	}
+
 	log.Info("Starting the manager")
 	exitOnError(mgr.Start(ctx), "manager exited non-zero")
 }
 
 func getNamespacesSelector(operatorNamespace string, watchNamespace string) map[string]cache.Config {
 	namespacesSelector := map[string]cache.Config{
+		// The same operator namespace is needed while the operator stores
+		// Builds and IntegrationKits and CamelCatalogs in its namespace
+		// TODO: remove this when we either remove those CR or we move them in the tenant namespace only
 		operatorNamespace: {},
 	}
-	if operatorNamespace != watchNamespace {
-		namespacesSelector[watchNamespace] = cache.Config{}
+
+	for ns := range strings.SplitSeq(watchNamespace, ",") {
+		ns = strings.TrimSpace(ns)
+		if ns == "" || ns == operatorNamespace {
+			continue
+		}
+
+		namespacesSelector[ns] = cache.Config{}
 	}
 
 	return namespacesSelector
@@ -257,24 +283,73 @@ func getWatchNamespace() (string, error) {
 }
 
 // getOperatorImage returns the image currently used by the running operator if present (when running out of cluster, it may be absent).
-func getOperatorImage(ctx context.Context, c ctrl.Reader) (string, error) {
-	ns := platform.GetOperatorNamespace()
-	name := platform.GetOperatorPodName()
-	if ns == "" || name == "" {
-		return "", nil
+func getOperatorImage(ctx context.Context, kubeClient client.Client) (string, error) {
+	podName := os.Getenv("POD_NAME")
+	podNamespace := os.Getenv("NAMESPACE")
+
+	if podName == "" {
+		return "", errors.New("POD_NAME environment variable is not set")
+	}
+	if podNamespace == "" {
+		return "", errors.New("NAMESPACE environment variable is not set")
 	}
 
-	pod := corev1.Pod{}
-	if err := c.Get(ctx, ctrl.ObjectKey{Namespace: ns, Name: name}, &pod); err != nil && k8serrors.IsNotFound(err) {
-		return "", nil
-	} else if err != nil {
-		return "", err
-	}
-	if len(pod.Spec.Containers) == 0 {
-		return "", errors.New("no containers found in operator pod")
+	pod := &corev1.Pod{}
+	if err := kubeClient.Get(ctx, types.NamespacedName{
+		Name:      podName,
+		Namespace: podNamespace,
+	}, pod); err != nil {
+		return "", fmt.Errorf("failed to get operator pod %s/%s: %w",
+			podNamespace, podName, err)
 	}
 
-	return pod.Spec.Containers[0].Image, nil
+	for _, container := range pod.Spec.Containers {
+		if container.Name == "camel-k-operator" {
+			return container.Image, nil
+		}
+	}
+
+	return "", fmt.Errorf(
+		"camel-k-operator container not found in pod %s/%s",
+		podNamespace,
+		podName,
+	)
+}
+
+// setupDevContainerRegistry is in charge to setup the development container registry configuration.
+func setupDevContainerRegistry(ctx context.Context, bootstrapClient client.Client, operatorNamespace string) {
+	// Only enable registry protected by secret if configured
+	devRegistrySecretEnvVal, devRegSecret := os.LookupEnv("ENABLE_DEV_REGISTRY_SECRET")
+	withSecret := devRegSecret && devRegistrySecretEnvVal == "true"
+	log.Info("Installing development container registry")
+	if withSecret {
+		log.Info("NOTE: ENABLE_DEV_REGISTRY_SECRET is set, mind to provide a secret with the expected default values (see docs) " +
+			" in the Integration namespace and to pull images with it.")
+	}
+	log.Info("WARNING: the internal development container registry is ephemeral and not secured. " +
+		"It MUST be considered for DEVELOPMENT and DEMO purposes only. Make sure to read documentation and switch to " +
+		"a production grade container registry when moving the operator to a production environment.")
+	registryCtx, registryCancel := context.WithTimeout(ctx, 1*time.Minute)
+	defer registryCancel()
+	if err := install.CreateContainerRegistrySelfSignedCerts(ctx, devRegistryselfSignedKey, devRegistryselfSignedCrt); err != nil {
+		log.Error(err, "could not generate development container registry self signed certificate")
+
+		return
+	}
+	crtSecret, err := kubernetes.TLSSecretFromFiles(ctx, operatorNamespace, "registry-tls", devRegistryselfSignedKey, devRegistryselfSignedCrt)
+	if err != nil {
+		log.Error(err, "could not generate development container registry self signed certificate secret")
+
+		return
+	}
+	overrideConf, err := install.OperatorStartupRegistry(registryCtx, bootstrapClient, withSecret, crtSecret)
+	if err != nil {
+		log.Error(err, "could not install the development container registry")
+
+		return
+	}
+
+	install.OverrideRegistryConfiguration(overrideConf)
 }
 
 func exitOnError(err error, msg string) {

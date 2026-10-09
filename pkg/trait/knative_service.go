@@ -26,10 +26,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
-	serving "knative.dev/serving/pkg/apis/serving/v1"
-
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	serving "github.com/apache/camel-k/v2/pkg/apis/duck/knative/serving/v1"
 	"github.com/apache/camel-k/v2/pkg/metadata"
 	"github.com/apache/camel-k/v2/pkg/util/boolean"
 	"github.com/apache/camel-k/v2/pkg/util/knative"
@@ -67,6 +66,8 @@ func newKnativeServiceTrait() Trait {
 }
 
 // IsAllowedInProfile overrides default.
+//
+//nolint:staticcheck
 func (t *knativeServiceTrait) IsAllowedInProfile(profile v1.TraitProfile) bool {
 	return profile.Equal(v1.TraitProfileKnative)
 }
@@ -106,10 +107,10 @@ func (t *knativeServiceTrait) Configure(e *Environment) (bool, *TraitCondition, 
 	}
 
 	if strategy == ControllerStrategyKnativeService {
-		t.Enabled = ptr.To(true)
+		t.Enabled = new(true)
 	} else if e.IntegrationInPhase(v1.IntegrationPhaseRunning, v1.IntegrationPhaseError) {
 		condition := e.Integration.Status.GetCondition(v1.IntegrationConditionKnativeServiceAvailable)
-		t.Enabled = ptr.To(condition != nil && condition.Status == corev1.ConditionTrue)
+		t.Enabled = new(condition != nil && condition.Status == corev1.ConditionTrue)
 	}
 
 	return ptr.Deref(t.Enabled, false), nil, nil
@@ -225,23 +226,20 @@ func (t *knativeServiceTrait) getServiceFor(e *Environment) (*serving.Service, e
 	}
 
 	svc := serving.Service{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Service",
-			APIVersion: serving.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        e.Integration.Name,
-			Namespace:   e.Integration.Namespace,
-			Labels:      serviceLabels,
-			Annotations: serviceAnnotations,
-		},
+		Kind:        "Service",
+		APIVersion:  serving.SchemeGroupVersion.String(),
+		Name:        e.Integration.Name,
+		Namespace:   e.Integration.Namespace,
+		Labels:      serviceLabels,
+		Annotations: serviceAnnotations,
 		Spec: serving.ServiceSpec{
 			ConfigurationSpec: serving.ConfigurationSpec{
 				Template: serving.RevisionTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{
-							v1.IntegrationLabel: e.Integration.Name,
-						},
+						// DeploymentLabels propagates the Camel Monitor label
+						// (CAMEL_MONITOR_OPERATOR_LABEL) to the revision Pods,
+						// mirroring the deployment trait behavior.
+						Labels:      kubernetes.DeploymentLabels(e.Integration.Name),
 						Annotations: revisionAnnotations,
 					},
 					Spec: serving.RevisionSpec{

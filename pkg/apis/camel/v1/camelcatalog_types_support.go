@@ -27,40 +27,40 @@ import (
 // NewCamelCatalog --.
 func NewCamelCatalog(namespace string, name string) CamelCatalog {
 	return CamelCatalog{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: SchemeGroupVersion.String(),
-			Kind:       CamelCatalogKind,
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
+		APIVersion: SchemeGroupVersion.String(),
+		Kind:       CamelCatalogKind,
+		Namespace:  namespace,
+		Name:       name,
 	}
 }
 
 // NewCamelCatalogWithSpecs --.
 func NewCamelCatalogWithSpecs(namespace string, name string, spec CamelCatalogSpec) CamelCatalog {
 	return CamelCatalog{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: SchemeGroupVersion.String(),
-			Kind:       CamelCatalogKind,
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
-		Spec: spec,
+		APIVersion: SchemeGroupVersion.String(),
+		Kind:       CamelCatalogKind,
+		Namespace:  namespace,
+		Name:       name,
+		Spec:       spec,
 	}
 }
 
 // NewCamelCatalogList --.
 func NewCamelCatalogList() CamelCatalogList {
 	return CamelCatalogList{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: SchemeGroupVersion.String(),
-			Kind:       CamelCatalogKind,
-		},
+		APIVersion: SchemeGroupVersion.String(),
+		Kind:       CamelCatalogKind,
 	}
+}
+
+// GetOperatorID returns the operator id as an annotation.
+func (c *CamelCatalog) GetOperatorID() string {
+	return GetAnnotation(OperatorIDAnnotation, c)
+}
+
+// SetOperatorID sets the given operator id as an annotation.
+func (c *CamelCatalog) SetOperatorID(operatorID string) {
+	SetAnnotation(&c.ObjectMeta, OperatorIDAnnotation, operatorID)
 }
 
 // GetType --.
@@ -229,7 +229,7 @@ func (c *CamelCatalogSpec) HasCapability(capability string) bool {
 // GetDependencyID returns a Camel K recognizable maven dependency for the artifact.
 func (in *CamelArtifact) GetDependencyID() string {
 	switch {
-	case in.GroupID == "org.apache.camel.quarkus" && strings.HasPrefix(in.ArtifactID, "camel-quarkus-"):
+	case in.GroupID == MavenQuarkusGroupID && strings.HasPrefix(in.ArtifactID, "camel-quarkus-"):
 		return "camel:" + in.ArtifactID[14:]
 	case in.Version == "":
 		return "mvn:" + in.GroupID + ":" + in.ArtifactID

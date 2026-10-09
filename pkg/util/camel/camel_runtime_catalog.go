@@ -25,22 +25,22 @@ import (
 
 // NewRuntimeCatalog creates a runtime catalog with the given catalog.
 func NewRuntimeCatalog(cat v1.CamelCatalog) *RuntimeCatalog {
-	catalog := RuntimeCatalog{}
-	catalog.CamelCatalogSpec = cat.Spec
-	catalog.CamelCatalogStatus = cat.Status
-	catalog.artifactByScheme = make(map[string]string)
-	catalog.artifactByDataFormat = make(map[string]string)
-	catalog.schemesByID = make(map[string]v1.CamelScheme)
-	catalog.languageDependencies = make(map[string]string)
-	catalog.javaTypeDependencies = make(map[string]string)
-	catalog.loaderByArtifact = make(map[string]string)
+	catalog := RuntimeCatalog{
+		CamelCatalogSpec:     cat.Spec,
+		CamelCatalogStatus:   cat.Status,
+		artifactByScheme:     make(map[string]string),
+		artifactByDataFormat: make(map[string]string),
+		schemesByID:          make(map[string]v1.CamelScheme),
+		languageDependencies: make(map[string]string),
+		javaTypeDependencies: make(map[string]string),
+		loaderByArtifact:     make(map[string]string)}
 
 	for id, artifact := range catalog.Artifacts {
 		for _, scheme := range artifact.Schemes {
 			// In case of duplicate only, choose the "org.apache.camel.quarkus" artifact (if present).
 			// Workaround for https://github.com/apache/camel-k/v2-runtime/issues/592
 			if _, duplicate := catalog.artifactByScheme[scheme.ID]; duplicate {
-				if artifact.GroupID != "org.apache.camel.quarkus" {
+				if artifact.GroupID != v1.MavenQuarkusGroupID {
 					continue
 				}
 			}

@@ -11,9 +11,13 @@ Here a quick resume of the parameters you can configure as environment variables
 |===
 | Name | Description | Default
 
+| BUILD_RUNTIME_PROVIDER
+| Provider of the Apache Camel runtime used for builds.
+| `plain-quarkus`
+
 | BUILD_RUNTIME_VERSION
-| Version of the runtime used for builds.
-| The Camel K runtime specified by the Camel K operator version released
+| Version of the Apache Camel runtime used for builds.
+| The default version specified by the Camel K operator version released
 
 | BUILD_TIMEOUT_SECONDS
 | Timeout (in seconds) for a build before it is terminated.
@@ -43,6 +47,22 @@ Here a quick resume of the parameters you can configure as environment variables
 | Maximum number of builds that can run concurrently.
 | `3` if build strategy is `routine`, `10` if `pod`
 
+| TOLERATION_TAINTS_ALLOWED_KEYS
+| Comma-separated list of taint keys that CR authors are permitted to use in `toleration.taints`. When unset or empty all keys are accepted. Taints whose key is not in the list are dropped and an info message is logged. Example: `node-role.kubernetes.io/master,disktype`.
+|
+
+| AFFINITY_NODE_LABELS_ALLOWED_KEYS
+| Comma-separated list of label keys that CR authors are permitted to use in `affinity.nodeAffinityLabels`. When unset or empty all keys are accepted. Expressions whose key is not in the list are dropped and an info message is logged. Example: `kubernetes.io/hostname,topology.kubernetes.io/zone`.
+|
+
+| BUILDER_TASKS_ENABLED
+| Controls whether CR authors are permitted to inject custom pipeline tasks via the `builder.tasks` trait. Set to `true` to enable custom task injection for all integrations managed by this operator.
+| `false`
+
+| BUILDER_NODE_SELECTOR_ALLOWED_LABELS
+| Comma-separated list of node-selector label keys that CR authors are permitted to set via the `builder.nodeSelector` trait. When unset or empty all keys are accepted. Unlisted keys are dropped and an info message is logged. Example: `kubernetes.io/hostname,topology.kubernetes.io/zone`.
+|
+
 |===
 
 Certain configuration can be also specified via trait configuration on xref:traits:builder.adoc[`builder`] and xref:traits:builder.adoc[`camel`] trait. Those values have precedence over global configuration.
@@ -54,11 +74,11 @@ Beside the values above, you can also configure specifically Maven using the fol
 | Name | Description | Default
 
 | MAVEN_SETTINGS
-| Configmap or Secret Maven `settings.xml` configuration used to define repositories, mirrors, and credentials.
+| Configmap or Secret Maven `settings.xml` configuration used to define repositories, mirrors, and credentials. Format expected `configmap\|secret:my-resource`.
 |
 
 | MAVEN_SETTINGS_SECURITY
-| Configmap or Secret Maven `settings-security.xml` configuration used for decrypting encrypted credentials in `settings.xml`.
+| Configmap or Secret Maven `settings-security.xml` configuration used for decrypting encrypted credentials in `settings.xml`. Format expected `configmap\|secret:my-resource`.
 |
 
 | MAVEN_CA_SECRETS
@@ -70,7 +90,11 @@ Beside the values above, you can also configure specifically Maven using the fol
 | -V,--no-transfer-progress,-Dstyle.color=never
 
 | MAVEN_REPOSITORIES
-| Comma separated list of Maven repository definitions (Repository format: `<repository-url>[@snapshots][@noreleases][@id=<value>][@name=<value>][@checksumpolicy=<value>]` - appends `@`-separated attributes to configure behavior (e.g. `http://my-nexus:8081/repository/public@id=my-repo@snapshots`)).
+| Comma separated list of default Maven repository definitions (repository format: `<repository-url>[@snapshots][@noreleases][@id=<value>][@name=<value>][@checksumpolicy=<value>]` - appends `@`-separated attributes to configure behavior (e.g. `http://my-nexus:8081/repository/public@id=my-repo@snapshots`)).
+|
+
+| MAVEN_REPOSITORIES_ALLOWED
+| Comma separated list of Maven repository definitions (repository format same as `MAVEN_REPOSITORIES`) which are allowed to be used by final users in Integrations.
 |
 
 |===

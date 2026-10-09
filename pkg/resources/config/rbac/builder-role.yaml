@@ -40,16 +40,9 @@ rules:
   - patch
   - update
 - apiGroups:
+  # Deprecated: this legacy group is replaced by events.k8s.io from version 2.10.0 onward
   - ""
-  resources:
-  - configmaps
-  - secrets
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
+  - "events.k8s.io"
   resources:
   - events
   verbs:

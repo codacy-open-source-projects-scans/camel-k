@@ -18,6 +18,7 @@ limitations under the License.
 package trait
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -224,34 +225,34 @@ func (t *quarkusTrait) validateNativeSupport(e *Environment) error {
 
 func (t *quarkusTrait) Apply(e *Environment) error {
 	if e.IntegrationInPhase(v1.IntegrationPhaseBuildingKit) {
-		t.applyWhileBuildingKit(e)
-
-		return nil
+		return t.applyWhileBuildingKit(e)
 	}
 
 	switch e.IntegrationKit.Status.Phase {
 	case v1.IntegrationKitPhaseBuildSubmitted:
-		if err := t.applyWhenBuildSubmitted(e); err != nil {
-			return err
-		}
+		return t.applyWhenBuildSubmitted(e)
 
 	case v1.IntegrationKitPhaseReady:
-		if err := t.applyWhenKitReady(e); err != nil {
-			return err
-		}
+		return t.applyWhenKitReady(e)
 	}
 
 	return nil
 }
 
-func (t *quarkusTrait) applyWhileBuildingKit(e *Environment) {
+func (t *quarkusTrait) applyWhileBuildingKit(e *Environment) error {
 	switch len(t.Modes) {
 	case 0:
 		// Default behavior
-		kit := t.newIntegrationKit(e, fastJarPackageType)
+		kit, err := t.newIntegrationKit(e, fastJarPackageType)
+		if err != nil {
+			return err
+		}
 		e.IntegrationKits = append(e.IntegrationKits, *kit)
 	case 1:
-		kit := t.newIntegrationKit(e, packageType(t.Modes[0]))
+		kit, err := t.newIntegrationKit(e, packageType(t.Modes[0]))
+		if err != nil {
+			return err
+		}
 		e.IntegrationKits = append(e.IntegrationKits, *kit)
 	default:
 		// execute jvm mode before native mode
@@ -259,7 +260,10 @@ func (t *quarkusTrait) applyWhileBuildingKit(e *Environment) {
 			return t.Modes[i] != traitv1.NativeQuarkusMode
 		})
 		for _, md := range t.Modes {
-			kit := t.newIntegrationKit(e, packageType(md))
+			kit, err := t.newIntegrationKit(e, packageType(md))
+			if err != nil {
+				return err
+			}
 			if kit.Spec.Traits.Quarkus == nil {
 				kit.Spec.Traits.Quarkus = &traitv1.QuarkusTrait{}
 			}
@@ -267,11 +271,20 @@ func (t *quarkusTrait) applyWhileBuildingKit(e *Environment) {
 			e.IntegrationKits = append(e.IntegrationKits, *kit)
 		}
 	}
+
+	return nil
 }
 
-func (t *quarkusTrait) newIntegrationKit(e *Environment, packageType quarkusPackageType) *v1.IntegrationKit {
+func (t *quarkusTrait) newIntegrationKit(e *Environment, packageType quarkusPackageType) (*v1.IntegrationKit, error) {
 	integration := e.Integration
-	kit := v1.NewIntegrationKit(integration.GetIntegrationKitNamespace(e.Platform.CatalogNamespace), fmt.Sprintf("kit-%s", xid.New()))
+	namespace := integration.GetIntegrationKitNamespace(e.Platform.CatalogNamespace)
+
+	if namespace != e.Integration.Namespace && namespace != e.Platform.CatalogNamespace {
+		// Cannot create a new Integration Kit outside those namespaces
+		return nil, errors.New("cannot create a Kit outside Integration or Catalog namespaces")
+	}
+
+	kit := v1.NewIntegrationKit(namespace, fmt.Sprintf("kit-%s", xid.New()))
 
 	kit.Labels = map[string]string{
 		v1.IntegrationKitTypeLabel:            v1.IntegrationKitTypePlatform,
@@ -291,15 +304,6 @@ func (t *quarkusTrait) newIntegrationKit(e *Environment, packageType quarkusPack
 
 	if v, ok := integration.Annotations[v1.IntegrationProfileAnnotation]; ok {
 		v1.SetAnnotation(&kit.ObjectMeta, v1.IntegrationProfileAnnotation, v)
-
-		//nolint:staticcheck
-		if v, ok := e.Integration.Annotations[v1.IntegrationProfileNamespaceAnnotation]; ok {
-			v1.SetAnnotation(&kit.ObjectMeta, v1.IntegrationProfileNamespaceAnnotation, v)
-		} else {
-			// set integration profile namespace to the integration namespace.
-			// this is because the kit may live in another namespace and needs to resolve the integration profile from the integration namespace.
-			v1.SetAnnotation(&kit.ObjectMeta, v1.IntegrationProfileNamespaceAnnotation, e.Integration.Namespace)
-		}
 	}
 	operatorID := defaults.OperatorID()
 	if operatorID != "" {
@@ -317,14 +321,14 @@ func (t *quarkusTrait) newIntegrationKit(e *Environment, packageType quarkusPack
 		kit.Spec.Capabilities = e.Integration.Status.Capabilities
 	}
 
-	return kit
+	return kit, nil
 }
 
 func propagateKitTraits(e *Environment) v1.IntegrationKitTraits {
 	kitTraits := v1.IntegrationKitTraits{}
 
 	ip, err := platform.GetForResource(e.Ctx, e.Client, e.Integration)
-	if ip != nil && err != nil {
+	if ip != nil && err == nil {
 		propagate(fmt.Sprintf("platform %q", ip.Name), ip.Status.Traits, &kitTraits)
 	}
 

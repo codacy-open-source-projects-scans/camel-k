@@ -23,12 +23,14 @@ import (
 	"time"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
+	"github.com/apache/camel-k/v2/pkg/util/maven"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestGetEnvPlatform_Defaults(t *testing.T) {
 	// No environment variables set
-	pl := getEnvPlatform() // reinitialize to get the value from env vars
+	InitPlatform()
+	pl := getDefaultPlatform()
 
 	assert.NotNil(t, pl)
 	assert.Equal(t, DefaultBuildStrategy, pl.BuildConfiguration.Strategy)
@@ -52,7 +54,8 @@ func TestGetEnvPlatform_WithEnv(t *testing.T) {
 	t.Setenv("MAVEN_SETTINGS", "configmap:my-settings@settings")
 	t.Setenv("MAVEN_SETTINGS_SECURITY", "secret:my-settings-sec@sec")
 
-	p := getEnvPlatform() // reinitialize to get the value from env vars
+	InitPlatform()
+	p := getDefaultPlatform()
 
 	assert.Equal(t, "1.2.3", p.BuildRuntimeVersion)
 	assert.Equal(t, time.Duration(10)*time.Second, p.BuildTimeout)
@@ -139,4 +142,187 @@ func TestImagePlatforms_OtherArch(t *testing.T) {
 
 	ips := imagePlatforms()
 	assert.Nil(t, ips)
+}
+
+func TestBuilderNodeSelectorAllowList_NotSet(t *testing.T) {
+	// env var not set – should return nil (allow everything)
+	allowList := BuilderNodeSelectorAllowList()
+	assert.Nil(t, allowList)
+}
+
+func TestBuilderNodeSelectorAllowList_Empty(t *testing.T) {
+	t.Setenv("BUILDER_NODE_SELECTOR_ALLOWED_LABELS", "")
+
+	allowList := BuilderNodeSelectorAllowList()
+	assert.Empty(t, allowList)
+}
+
+func TestBuilderNodeSelectorAllowList_SingleKey(t *testing.T) {
+	t.Setenv("BUILDER_NODE_SELECTOR_ALLOWED_LABELS", "kubernetes.io/hostname")
+
+	allowList := BuilderNodeSelectorAllowList()
+	assert.Equal(t, []string{"kubernetes.io/hostname"}, allowList)
+}
+
+func TestBuilderNodeSelectorAllowList_MultipleKeys(t *testing.T) {
+	t.Setenv("BUILDER_NODE_SELECTOR_ALLOWED_LABELS", "kubernetes.io/hostname,node-role.kubernetes.io/worker, topology.kubernetes.io/zone ")
+
+	allowList := BuilderNodeSelectorAllowList()
+	assert.Equal(t, []string{"kubernetes.io/hostname", "node-role.kubernetes.io/worker", "topology.kubernetes.io/zone"}, allowList)
+}
+
+func TestTolerationTaintsAllowList_NotSet(t *testing.T) {
+	allowList := TolerationTaintsAllowList()
+	assert.Nil(t, allowList)
+}
+
+func TestTolerationTaintsAllowList_Empty(t *testing.T) {
+	t.Setenv("TOLERATION_TAINTS_ALLOWED_KEYS", "")
+
+	allowList := TolerationTaintsAllowList()
+	assert.Empty(t, allowList)
+}
+
+func TestTolerationTaintsAllowList_SingleKey(t *testing.T) {
+	t.Setenv("TOLERATION_TAINTS_ALLOWED_KEYS", "node-role.kubernetes.io/master")
+
+	allowList := TolerationTaintsAllowList()
+	assert.Equal(t, []string{"node-role.kubernetes.io/master"}, allowList)
+}
+
+func TestTolerationTaintsAllowList_MultipleKeys(t *testing.T) {
+	t.Setenv("TOLERATION_TAINTS_ALLOWED_KEYS", "node-role.kubernetes.io/master, disktype ")
+
+	allowList := TolerationTaintsAllowList()
+	assert.Equal(t, []string{"node-role.kubernetes.io/master", "disktype"}, allowList)
+}
+
+func TestAffinityNodeLabelsAllowList_NotSet(t *testing.T) {
+	allowList := AffinityNodeLabelsAllowList()
+	assert.Nil(t, allowList)
+}
+
+func TestAffinityNodeLabelsAllowList_Empty(t *testing.T) {
+	t.Setenv("AFFINITY_NODE_LABELS_ALLOWED_KEYS", "")
+
+	allowList := AffinityNodeLabelsAllowList()
+	assert.Empty(t, allowList)
+}
+
+func TestAffinityNodeLabelsAllowList_SingleKey(t *testing.T) {
+	t.Setenv("AFFINITY_NODE_LABELS_ALLOWED_KEYS", "kubernetes.io/hostname")
+
+	allowList := AffinityNodeLabelsAllowList()
+	assert.Equal(t, []string{"kubernetes.io/hostname"}, allowList)
+}
+
+func TestAffinityNodeLabelsAllowList_MultipleKeys(t *testing.T) {
+	t.Setenv("AFFINITY_NODE_LABELS_ALLOWED_KEYS", "kubernetes.io/hostname, topology.kubernetes.io/zone ")
+
+	allowList := AffinityNodeLabelsAllowList()
+	assert.Equal(t, []string{"kubernetes.io/hostname", "topology.kubernetes.io/zone"}, allowList)
+}
+
+func TestBuilderTasksEnabled_NotSet(t *testing.T) {
+	// env var not set – default is disabled
+	assert.False(t, BuilderTasksEnabled())
+}
+
+func TestBuilderTasksEnabled_True(t *testing.T) {
+	t.Setenv("BUILDER_TASKS_ENABLED", "true")
+	assert.True(t, BuilderTasksEnabled())
+}
+
+func TestBuilderTasksEnabled_False(t *testing.T) {
+	t.Setenv("BUILDER_TASKS_ENABLED", "false")
+	assert.False(t, BuilderTasksEnabled())
+}
+
+func TestBuilderTasksEnabled_FalseUpperCase(t *testing.T) {
+	t.Setenv("BUILDER_TASKS_ENABLED", "FALSE")
+	assert.False(t, BuilderTasksEnabled())
+}
+
+func TestBuilderTasksEnabled_Empty(t *testing.T) {
+	t.Setenv("BUILDER_TASKS_ENABLED", "")
+	// empty string is not "false" – treat as enabled
+	assert.False(t, BuilderTasksEnabled())
+}
+
+func TestMavenRepoAllowed(t *testing.T) {
+	t.Setenv("MAVEN_REPOSITORIES_ALLOWED", "repo1,repo2")
+	assert.True(t, IsMavenRepoAllowed("repo1"))
+	assert.True(t, IsMavenRepoAllowed("repo2"))
+	assert.False(t, IsMavenRepoAllowed("repo3"))
+}
+
+func TestMavenRepoAllowedDefault(t *testing.T) {
+	assert.True(t, IsMavenRepoAllowed(maven.DefaultMavenRepositories))
+	assert.False(t, IsMavenRepoAllowed("repo3"))
+}
+
+func TestFromIntegrationProfile_Overrides(t *testing.T) {
+	original := singletonPlatform
+	t.Cleanup(func() {
+		singletonPlatform = original
+	})
+
+	singletonPlatform = Platform{
+		BuildRuntimeVersion: "1.20",
+		BuildTimeout:        5 * time.Minute,
+		BuildConfiguration: v1.BuildConfiguration{
+			Strategy:      "default-strategy",
+			OrderStrategy: "default-order",
+		},
+		BuildBaseImage:  "default-image",
+		PublishStrategy: "default-publish",
+		Registry: v1.RegistrySpec{
+			Address: "default.registry",
+		},
+		Maven: v1.MavenBuildSpec{
+			MavenSpec:    v1.MavenSpec{},
+			Repositories: []v1.Repository{},
+		},
+		MaxRunningBuilds: 3,
+	}
+
+	itpr := &v1.IntegrationProfile{
+		Spec: v1.IntegrationProfileSpec{
+			Build: v1.IntegrationProfileBuildSpec{
+				RuntimeProvider: v1.RuntimeProviderPlainQuarkus,
+				RuntimeVersion:  "1.21",
+				BaseImage:       "custom-image",
+				PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyJib,
+				Registry: &v1.RegistrySpec{
+					Address:      "custom.registry",
+					Secret:       "custom-secret",
+					Organization: "custom-org",
+				},
+				Maven: &v1.MavenSpec{
+					Settings: v1.ValueSource{},
+				},
+				Repositories:     []string{"https://repo1.example.com", "https://repo2.example.com"},
+				MaxRunningBuilds: 10,
+			},
+		},
+	}
+
+	got := fromIntegrationProfile(itpr)
+
+	assert.Equal(t, v1.RuntimeProviderPlainQuarkus, got.BuildRuntimeProvider)
+	assert.Equal(t, "1.21", got.BuildRuntimeVersion)
+	assert.Equal(t, "custom-image", got.BuildBaseImage)
+	assert.Equal(t, v1.IntegrationPlatformBuildPublishStrategyJib, got.PublishStrategy)
+	assert.Equal(t, "custom.registry", got.Registry.Address)
+	assert.Equal(t, "custom-secret", got.Registry.Secret)
+	assert.Equal(t, "custom-org", got.Registry.Organization)
+	assert.Equal(t, int32(10), got.MaxRunningBuilds)
+	assert.Equal(t,
+		itpr.Spec.Build.Maven,
+		&got.Maven.MavenSpec,
+	)
+	assert.Equal(t,
+		splitRepositories(itpr.Spec.Build.Repositories),
+		got.Maven.Repositories,
+	)
 }

@@ -194,21 +194,15 @@ func InspectorForLanguage(catalog *camel.RuntimeCatalog, language v1.Language) I
 	switch language {
 	case v1.LanguageJavaSource:
 		return &JavaSourceInspector{
-			baseInspector: baseInspector{
-				catalog: catalog,
-			},
+			catalog: catalog,
 		}
 	case v1.LanguageXML:
 		return &XMLInspector{
-			baseInspector: baseInspector{
-				catalog: catalog,
-			},
+			catalog: catalog,
 		}
 	case v1.LanguageYaml:
 		return &YAMLInspector{
-			baseInspector: baseInspector{
-				catalog: catalog,
-			},
+			catalog: catalog,
 		}
 	}
 
@@ -367,8 +361,9 @@ func (i *baseInspector) addDependencies(uri string, meta *Metadata, consumer boo
 	candidateComp, scheme := i.catalog.DecodeComponent(uri)
 
 	if candidateComp == nil || scheme == nil {
-		return fmt.Errorf("component not found for uri %q in camel catalog runtime version %s",
-			uri, i.catalog.GetRuntimeVersion())
+		// just ignore as it could be a custom component which has to be
+		// provided by the final user
+		return nil
 	}
 
 	meta.AddDependency(candidateComp.GetDependencyID())
@@ -403,6 +398,15 @@ func (i *baseInspector) addDependenciesFromURI(uri string, scheme *v1.CamelSchem
 			return fmt.Errorf("dataformat %q not found: %s", name, uri)
 		}
 		meta.AddDependency(df.GetDependencyID())
+	}
+
+	if scheme.ID == "master" {
+		// master:namespace:delegateUri[?options]
+		// The delegate endpoint is the one that consumes, so it needs its own dependencies.
+		// The master component is consumer only.
+		if parts := strings.SplitN(uri, ":", 3); len(parts) == 3 {
+			return i.addDependencies(parts[2], meta, true)
+		}
 	}
 
 	return nil

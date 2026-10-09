@@ -49,13 +49,13 @@ func TestMasterTrait(t *testing.T) {
 			// Run using Quarkus properties instead of deprecated trait
 			g.Expect(KamelRun(t, ctx, ns, "files/Master.java",
 				"-d", "camel:kubernetes",
+				"-d", "mvn:org.apache.camel.quarkus:camel-quarkus-kubernetes-cluster-service",
 				"-p", fmt.Sprintf("quarkus.camel.cluster.kubernetes.resource-name=%s-lock", name),
-				"-p", "quarkus.camel.cluster.kubernetes.resource-type=Lease",
 				"-p", fmt.Sprintf("quarkus.camel.cluster.kubernetes.labels.\"camel.apache.org/integration\"=%s", name),
 			).Execute()).To(Succeed())
 			g.Eventually(IntegrationPodPhase(t, ctx, ns, name), TestTimeoutLong).Should(Equal(corev1.PodRunning))
 			g.Eventually(IntegrationLogs(t, ctx, ns, name), TestTimeoutShort).Should(ContainSubstring("Magicstring!"))
-			g.Expect(Kamel(t, ctx, "delete", "--all", "-n", ns).Execute()).To(Succeed())
+			ExpectExecSucceed(t, g, Kubectl("delete", "it", "--all", "-n", ns))
 		})
 
 		t.Run("only one integration with master runs using properties", func(t *testing.T) {
@@ -68,10 +68,10 @@ func TestMasterTrait(t *testing.T) {
 
 			g.Expect(KamelRun(t, ctx, ns, "files/Master.java", "--name", nameFirst,
 				"-d", "camel:kubernetes",
+				"-d", "mvn:org.apache.camel.quarkus:camel-quarkus-kubernetes-cluster-service",
 				"--label", "leader-group=same",
 				"-t", "owner.target-labels=leader-group",
 				"-p", fmt.Sprintf("quarkus.camel.cluster.kubernetes.resource-name=%s", lockName),
-				"-p", "quarkus.camel.cluster.kubernetes.resource-type=Lease",
 				"-p", "quarkus.camel.cluster.kubernetes.labels.\"leader-group\"=same",
 			).Execute()).To(Succeed())
 			g.Eventually(IntegrationConditionStatus(t, ctx, ns, nameFirst, v1.IntegrationConditionReady), TestTimeoutShort).Should(Equal(corev1.ConditionTrue))
@@ -79,10 +79,10 @@ func TestMasterTrait(t *testing.T) {
 
 			g.Expect(KamelRun(t, ctx, ns, "files/Master.java", "--name", nameSecond,
 				"-d", "camel:kubernetes",
+				"-d", "mvn:org.apache.camel.quarkus:camel-quarkus-kubernetes-cluster-service",
 				"--label", "leader-group=same",
 				"-t", "owner.target-labels=leader-group",
 				"-p", fmt.Sprintf("quarkus.camel.cluster.kubernetes.resource-name=%s", lockName),
-				"-p", "quarkus.camel.cluster.kubernetes.resource-type=Lease",
 				"-p", "quarkus.camel.cluster.kubernetes.labels.\"leader-group\"=same",
 			).Execute()).To(Succeed())
 			g.Eventually(IntegrationLogs(t, ctx, ns, nameSecond), TestTimeoutShort).Should(ContainSubstring("started in"))

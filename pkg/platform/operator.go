@@ -25,9 +25,7 @@ import (
 	camelv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/v2/pkg/util/defaults"
 	coordination "k8s.io/api/coordination/v1"
-	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -38,13 +36,16 @@ import (
 const (
 	OperatorWatchNamespaceEnvVariable = "WATCH_NAMESPACE"
 	operatorNamespaceEnvVariable      = "NAMESPACE"
-	operatorPodNameEnvVariable        = "POD_NAME"
 	OperatorBuildStrategyEnvVar       = "BUILD_STRATEGY"
 )
 
 const OperatorLockName = "camel-k-lock"
 
 var OperatorImage string
+
+// CertManagerInstalled is computed once at operator bootstrap and reports whether
+// cert-manager's ClusterIssuer CRD is available on the cluster.
+var CertManagerInstalled bool
 
 // IsCurrentOperatorGlobal returns true if the operator is configured to watch all namespaces.
 func IsCurrentOperatorGlobal() bool {
@@ -57,28 +58,6 @@ func IsCurrentOperatorGlobal() bool {
 	log.Debug("Operator is local to namespace")
 
 	return false
-}
-
-// GetOperatorPod returns the Pod which is running the operator in a given namespace.
-func GetOperatorPod(ctx context.Context, c ctrl.Reader, ns string) *corev1.Pod {
-	lst := corev1.PodList{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Pod",
-			APIVersion: corev1.SchemeGroupVersion.String(),
-		},
-	}
-	if err := c.List(ctx, &lst,
-		ctrl.InNamespace(ns),
-		ctrl.MatchingLabels{
-			"camel.apache.org/component": "operator",
-		}); err != nil {
-		return nil
-	}
-	if len(lst.Items) == 0 {
-		return nil
-	}
-
-	return &lst.Items[0]
 }
 
 // GetOperatorWatchNamespace returns the namespace the operator watches.
@@ -94,15 +73,6 @@ func GetOperatorWatchNamespace() string {
 func GetOperatorNamespace() string {
 	if podNamespace, envSet := os.LookupEnv(operatorNamespaceEnvVariable); envSet {
 		return podNamespace
-	}
-
-	return ""
-}
-
-// GetOperatorPodName returns the pod that is running the current operator (if any).
-func GetOperatorPodName() string {
-	if podName, envSet := os.LookupEnv(operatorPodNameEnvVariable); envSet {
-		return podName
 	}
 
 	return ""
@@ -174,20 +144,7 @@ func IsOperatorHandler(object ctrl.Object) bool {
 		return true
 	}
 
-	// check if we are dealing with resource that is missing a proper operator id annotation
-	if resourceID == "" {
-		// allow default global operator to handle legacy resources (missing proper operator id annotations)
-		if operatorID == DefaultPlatformName {
-			return true
-		}
-
-		// allow local operators to handle legacy resources (missing proper operator id annotations)
-		if !IsCurrentOperatorGlobal() {
-			return true
-		}
-	}
-
-	return false
+	return resourceID == ""
 }
 
 // IsOperatorHandlerConsideringLock uses normal IsOperatorHandler checks and adds additional check for legacy resources
@@ -266,11 +223,6 @@ func (f FilteringFuncs[T]) Update(e event.TypedUpdateEvent[T]) bool {
 		return true
 	}
 	if camelv1.GetIntegrationProfileAnnotation(e.ObjectOld) != camelv1.GetIntegrationProfileAnnotation(e.ObjectNew) {
-		// Always force reconciliation when the object gets attached to a new integration profile
-		return true
-	}
-	//nolint:staticcheck
-	if camelv1.GetIntegrationProfileNamespaceAnnotation(e.ObjectOld) != camelv1.GetIntegrationProfileNamespaceAnnotation(e.ObjectNew) {
 		// Always force reconciliation when the object gets attached to a new integration profile
 		return true
 	}

@@ -3,8 +3,6 @@
 
 Camel K allows us to run Camel integrations directly on a Kubernetes cluster. To use it, you need to be connected to a cloud environment or to a local cluster created for development purposes (ie, Minikube or Kind).
 
-The first step is to install and run the Camel K operator. You can do it via any of the following methodologies:
-
 [[kustomize]]
 == Installation via Kustomize
 
@@ -12,8 +10,7 @@ https://kustomize.io[Kustomize] provides a declarative approach to the configura
 
 [subs=attributes+]
 ----
-$ kubectl create ns camel-k
-$ kubectl apply -k github.com/apache/camel-k/install/overlays/kubernetes/descoped?ref=v{last-released-version} --server-side
+$ kubectl apply -k github.com/apache/camel-k/install/overlays/all-namespaces?ref=v{last-released-version} --server-side
 ----
 
 You can specify as `ref` parameter the version you're willing to install (ie, `v{last-released-version}`). The command above will install a descoped (global) operator in the camel-k namespace. This is the suggested configuration in order to manage Integrations in all namespaces.
@@ -43,12 +40,26 @@ You can edit the `Subscription` custom resource, setting the channel you want to
 
 NOTE: Some Kubernetes clusters such as Openshift may let you to perform the same operation from a GUI as well. Refer to the cluster instruction to learn how to perform such action from user interface.
 
-[[container-registry]]
-== Setup the container registry
+[[installation-topology]]
+== Installation topology
 
-The only configuration you may want to change is the container registry which the operator need to use in order to store the container images used to run the Camel applications built. The default installation expects a container registry available in the `kube-system` namespace exposed by a `Service` named `registry` (this is the location where development environment Minikube install the registry via `minikube addons enable registry`).
+When you decide to install the operator, you can decide to install the following topology:
 
-Have a further look at the xref:installation/registry.adoc[production ready registry configuration documentation].
+* Global operator: a single global operator watching all namespaces.
+* Own namespace operator: a namespaces operator watching its own namespace only.
+* Single namespace operator: an operator installed in a namespace and watching another namespace.
+* Multi namespace operator: an operator installed in a namespace and watching multiple namespaces.
+
+The namespace(s) to watch is configured via `WATCH_NAMESPACE` variable in the operator `Deployment` resource. You can provide an empty value (watch all namespaces), a single value (watch either the own namespace or any other namespace) or a comma separated value (watching as many namespaces as provided).
+
+It's important to notice that when running the single or multiple namespace operator, you _may_ need to provide the RBACs which are expected by the operator to run properly. For such a configuration you can take as a reference the `Kustomize` examples available in `/install/overlays/single-namespace/` and `/install/overlays/multi-namespace/`. The last topology is probably the most secure as it will avoid the operator to access to any resource outside those namespaces for which you've provided the proper security rules.
+
+NOTE: RBAC custom configuration may vary depending on the installation methodology.
+
+[[bootstrap-configuration]]
+== Setup the operator configuration
+
+Each installation method have its proper way to setup configuration. A common one is the creation of a `Configmap` named `camel-k-operator-configmap-configuration` and a `Secret` named `camel-k-operator-secret-configuration` in the same namespace where the operator is installed. If available, the operator will read the environment variable from these resources.
 
 [[verify]]
 == Verify that the operator is up and running
@@ -73,6 +84,29 @@ Camel K installation is usually straightforward, but for certain cluster types y
 
 - xref:installation/platform/gke.adoc[Google Kubernetes Engine (GKE)]
 - xref:installation/platform/iks.adoc[IBM Kubernetes Services (IKS)]
+
+[[registry]]
+== Development container registry configuration
+
+Camel K needs a container registry in order to push the generated Camel applications and Kubernetes needs the same registry to pull and run them live. The project offers a default development container registry that will simplify quick starts, demo and testing. When running the project for the first time or in a local environment you shouldn't worry as it will be completely transparent to you. The development registry is controlled through the following environment variables configuration:
+
+[cols="1,3,2", options="header"]
+|===
+| Name | Description | Default Value
+
+| ENABLE_DEV_REGISTRY
+| Run a demo container registry application in the same namespace as the Camel K Operator.
+| true
+
+| ENABLE_DEV_REGISTRY_SECRET
+| Whether to secure the demo container registry with a default test user (`admin/password`). In this case you need to provide a secret in the Integration namespace and use the `pull-secret` trait configuration. Be aware that the operator will store a secret named `ck-dev-registry` in the same namespace where it is installed. You may copy and use it in your Integration namespace for local development purposes.
+| false
+
+|===
+
+When ready to move to a real enterprise installation you will need to turn the flag off (or remove it) and provide a proper xref:installation/registry.adoc[production ready registry configuration].
+
+NOTE: if you don't remove the `ENABLE_DEV_REGISTRY` parameter, the operator will overwrite any registry configuration at startup with its internal demo registry.
 
 [[fine-tuning]]
 == Fine Tuning

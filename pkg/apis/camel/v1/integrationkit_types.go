@@ -60,6 +60,8 @@ type IntegrationKitSpec struct {
 	// a list of Camel dependencies used by this kit
 	Dependencies []string `json:"dependencies,omitempty"`
 	// the profile which is expected by this kit
+	//
+	// Deprecated: may be removed in future releases.
 	Profile TraitProfile `json:"profile,omitempty"`
 	// traits that the kit will execute
 	Traits IntegrationKitTraits `json:"traits,omitempty"`
@@ -158,10 +160,6 @@ const (
 	IntegrationKitTypeUser = "user"
 	// IntegrationKitTypeExternal identifies a Kit created by any third party.
 	IntegrationKitTypeExternal = "external"
-	// IntegrationKitTypeSynthetic identifies a synthetic Kit (generated for any container image for which the operator cannot make any assumption).
-	//
-	// Deprecated: synthetic Integration Kits are replaced by non managed build Integrations.
-	IntegrationKitTypeSynthetic = "synthetic"
 
 	// IntegrationKitLayoutLabel labels the kit layout.
 	IntegrationKitLayoutLabel = "camel.apache.org/kit.layout"

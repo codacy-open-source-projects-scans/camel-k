@@ -26,6 +26,7 @@ linters:
     - err113
     - exhaustive
     - exhaustruct
+    - exhaustruct_v5
     - funcorder
     - funlen
     - gochecknoglobals
@@ -44,10 +45,11 @@ linters:
     - wrapcheck
     - wsl
     - wsl_v5
+    - gomodguard
   settings:
     goconst:
       min-len: 4
-      min-occurrences: 5
+      min-occurrences: 10
       ignore-calls: true
       numbers: false
     lll:

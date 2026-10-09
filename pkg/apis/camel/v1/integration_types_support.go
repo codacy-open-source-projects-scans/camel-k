@@ -37,12 +37,6 @@ const (
 	IntegrationLabel = "camel.apache.org/integration"
 	// IntegrationGenerationLabel is used to check on outdated integration resources that can be removed by garbage collection.
 	IntegrationGenerationLabel = "camel.apache.org/generation"
-	// IntegrationSyntheticLabel is used to tag k8s synthetic Integrations.
-	IntegrationSyntheticLabel = "camel.apache.org/is-synthetic"
-	// IntegrationImportedKindLabel specifies from what kind of resource an Integration was imported.
-	IntegrationImportedKindLabel = "camel.apache.org/imported-from-kind"
-	// IntegrationImportedNameLabel specifies from what resource an Integration was imported.
-	IntegrationImportedNameLabel = "camel.apache.org/imported-from-name"
 
 	// IntegrationFlowEmbeddedSourceName --.
 	IntegrationFlowEmbeddedSourceName = "camel-k-embedded-flow.yaml"
@@ -50,23 +44,17 @@ const (
 
 func NewIntegration(namespace string, name string) Integration {
 	return Integration{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: SchemeGroupVersion.String(),
-			Kind:       IntegrationKind,
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
+		APIVersion: SchemeGroupVersion.String(),
+		Kind:       IntegrationKind,
+		Namespace:  namespace,
+		Name:       name,
 	}
 }
 
 func NewIntegrationList() IntegrationList {
 	return IntegrationList{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: SchemeGroupVersion.String(),
-			Kind:       IntegrationKind,
-		},
+		APIVersion: SchemeGroupVersion.String(),
+		Kind:       IntegrationKind,
 	}
 }
 
@@ -139,10 +127,8 @@ func (in *Integration) OriginalSourcesOnly() []SourceSpec {
 	if len(in.Spec.Flows) > 0 {
 		content, _ := ToYamlDSL(in.Spec.Flows)
 		sources = append(sources, SourceSpec{
-			DataSpec: DataSpec{
-				Name:    IntegrationFlowEmbeddedSourceName,
-				Content: string(content),
-			},
+			Name:    IntegrationFlowEmbeddedSourceName,
+			Content: string(content),
 		})
 	}
 
@@ -270,12 +256,15 @@ func (in *Integration) Configurations() []ConfigurationSpec {
 
 func NewSourceSpec(name string, content string, language Language) SourceSpec {
 	return SourceSpec{
-		DataSpec: DataSpec{
-			Name:    name,
-			Content: content,
-		},
+		Name:     name,
+		Content:  content,
 		Language: language,
 	}
+}
+
+// GetOperatorID returns the operator id as an annotation.
+func (in *Integration) GetOperatorID() string {
+	return GetAnnotation(OperatorIDAnnotation, in)
 }
 
 // SetOperatorID sets the given operator id as an annotation.
@@ -355,11 +344,6 @@ func (in *Integration) SetReadyCondition(status corev1.ConditionStatus, reason, 
 // SetReadyConditionError sets Ready condition to False with the given error message.
 func (in *Integration) SetReadyConditionError(err string) {
 	in.SetReadyCondition(corev1.ConditionFalse, IntegrationConditionErrorReason, err)
-}
-
-// IsSynthetic returns true for synthetic Integrations (non managed, likely imported from external deployments).
-func (in *Integration) IsSynthetic() bool {
-	return in.Annotations[IntegrationSyntheticLabel] == "true"
 }
 
 // SetBuildCompletePhase set the proper building phase and the related timestamps.

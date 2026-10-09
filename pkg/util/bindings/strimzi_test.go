@@ -19,17 +19,21 @@ package bindings
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	camelv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
-	"github.com/apache/camel-k/v2/pkg/apis/duck/strimzi/v1beta2"
+	strimziv1 "github.com/apache/camel-k/v2/pkg/apis/duck/strimzi/v1"
 	"github.com/apache/camel-k/v2/pkg/client/strimzi/clientset/internalclientset/fake"
 	"github.com/apache/camel-k/v2/pkg/internal"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func TestStrimziDirect(t *testing.T) {
@@ -70,13 +74,13 @@ func TestStrimziLookup(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cluster := v1beta2.Kafka{
+	cluster := strimziv1.Kafka{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "test",
 			Name:      "myclusterx",
 		},
-		Status: v1beta2.KafkaStatus{
-			Listeners: []v1beta2.KafkaStatusListener{
+		Status: strimziv1.KafkaStatus{
+			Listeners: []strimziv1.KafkaStatusListener{
 				{
 					Name: "tls",
 				},
@@ -88,12 +92,12 @@ func TestStrimziLookup(t *testing.T) {
 		},
 	}
 
-	topic := v1beta2.KafkaTopic{
+	topic := strimziv1.KafkaTopic{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "test",
 			Name:      "mytopicy",
 			Labels: map[string]string{
-				v1beta2.StrimziKafkaClusterLabel: "myclusterx",
+				strimziv1.StrimziKafkaClusterLabel: "myclusterx",
 			},
 		},
 	}
@@ -130,13 +134,13 @@ func TestStrimziLookupByTopicName(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cluster := v1beta2.Kafka{
+	cluster := strimziv1.Kafka{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "test",
 			Name:      "myclusterx",
 		},
-		Status: v1beta2.KafkaStatus{
-			Listeners: []v1beta2.KafkaStatusListener{
+		Status: strimziv1.KafkaStatus{
+			Listeners: []strimziv1.KafkaStatusListener{
 				{
 					Name: "tls",
 				},
@@ -148,15 +152,15 @@ func TestStrimziLookupByTopicName(t *testing.T) {
 		},
 	}
 
-	topic := v1beta2.KafkaTopic{
+	topic := strimziv1.KafkaTopic{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "test",
 			Name:      "mytopicy",
 			Labels: map[string]string{
-				v1beta2.StrimziKafkaClusterLabel: "myclusterx",
+				strimziv1.StrimziKafkaClusterLabel: "myclusterx",
 			},
 		},
-		Status: v1beta2.KafkaTopicStatus{
+		Status: strimziv1.KafkaTopicStatus{
 			TopicName: "my-topic-name",
 		},
 	}
@@ -193,13 +197,13 @@ func TestStrimziKafkaCR(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cluster := v1beta2.Kafka{
+	cluster := strimziv1.Kafka{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "test",
 			Name:      "my-kafka",
 		},
-		Status: v1beta2.KafkaStatus{
-			Listeners: []v1beta2.KafkaStatusListener{
+		Status: strimziv1.KafkaStatus{
+			Listeners: []strimziv1.KafkaStatusListener{
 				{
 					Name: "tls",
 				},
@@ -246,13 +250,13 @@ func TestStrimziPassThrough(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cluster := v1beta2.Kafka{
+	cluster := strimziv1.Kafka{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "test",
 			Name:      "my-kafka",
 		},
-		Status: v1beta2.KafkaStatus{
-			Listeners: []v1beta2.KafkaStatusListener{
+		Status: strimziv1.KafkaStatus{
+			Listeners: []strimziv1.KafkaStatusListener{
 				{
 					Name: "tls",
 				},
@@ -288,4 +292,93 @@ func TestStrimziPassThrough(t *testing.T) {
 	}, endpoint)
 	require.NoError(t, err)
 	assert.Nil(t, binding)
+}
+
+func TestStrimziNamespace(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		namespace string
+		wantURI   string
+	}{
+		{name: "context namespace", wantURI: "kafka:topic?brokers=local%3A9092"},
+		{name: "explicit namespace", namespace: "other", wantURI: "kafka:topic?brokers=remote%3A9092"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := fake.NewSimpleClientset(
+				&strimziv1.KafkaTopic{Name: "topic", Namespace: "test", Labels: map[string]string{strimziv1.StrimziKafkaClusterLabel: "local-cluster"}},
+				&strimziv1.KafkaTopic{Name: "topic", Namespace: "other", Labels: map[string]string{strimziv1.StrimziKafkaClusterLabel: "remote-cluster"}},
+				&strimziv1.Kafka{Name: "local-cluster", Namespace: "test", Status: strimziv1.KafkaStatus{Listeners: []strimziv1.KafkaStatusListener{{Name: "plain", BootstrapServers: "local:9092"}}}},
+				&strimziv1.Kafka{Name: "remote-cluster", Namespace: "other", Status: strimziv1.KafkaStatus{Listeners: []strimziv1.KafkaStatusListener{{Name: "plain", BootstrapServers: "remote:9092"}}}},
+			)
+			binding, err := (StrimziBindingProvider{Client: client}).Translate(BindingContext{
+				Ctx: context.Background(), Namespace: "test",
+			}, EndpointContext{}, camelv1.Endpoint{Ref: &v1.ObjectReference{
+				APIVersion: "kafka.strimzi.io/v1", Kind: "KafkaTopic", Name: "topic", Namespace: tc.namespace,
+			}})
+			require.NoError(t, err)
+			require.NotNil(t, binding)
+			assert.Equal(t, tc.wantURI, binding.URI)
+		})
+	}
+}
+
+func TestStrimziMissingCluster(t *testing.T) {
+	provider := StrimziBindingProvider{Client: fake.NewSimpleClientset()}
+	servers, err := provider.getBootstrapServers(BindingContext{Ctx: context.Background()}, "missing", "test")
+	require.Error(t, err)
+	assert.True(t, k8serrors.IsNotFound(err))
+	assert.Empty(t, servers)
+}
+
+func TestStrimziListenerValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		listeners []strimziv1.KafkaStatusListener
+		wantError string
+	}{
+		{name: "no listeners", wantError: `cluster "cluster" has no listeners of name "plain"`},
+		{name: "only TLS", listeners: []strimziv1.KafkaStatusListener{{Name: "tls", BootstrapServers: "tls:9093"}}, wantError: `cluster "cluster" has no listeners of name "plain"`},
+		{name: "empty bootstrap servers", listeners: []strimziv1.KafkaStatusListener{{Name: "plain"}}, wantError: `cluster "cluster" has no bootstrap servers in "plain" listener`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			provider := StrimziBindingProvider{Client: fake.NewSimpleClientset(&strimziv1.Kafka{
+				Name: "cluster", Namespace: "test",
+				Status: strimziv1.KafkaStatus{Listeners: tc.listeners},
+			})}
+			servers, err := provider.getBootstrapServers(BindingContext{Ctx: context.Background()}, "cluster", "test")
+			require.EqualError(t, err, tc.wantError)
+			assert.Empty(t, servers)
+		})
+	}
+}
+
+func TestStrimziLookupErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		verb string
+	}{
+		{name: "get failure", verb: "get"},
+		{name: "list failure", verb: "list"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := fake.NewSimpleClientset()
+			wantErr := errors.New("API request failed")
+			client.PrependReactor(tc.verb, "kafkatopics", func(k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, wantErr
+			})
+			topic, err := (StrimziBindingProvider{Client: client}).lookupTopic(BindingContext{
+				Ctx: context.Background(), Namespace: "test",
+			}, camelv1.Endpoint{Ref: &v1.ObjectReference{Name: "missing"}})
+			require.ErrorIs(t, err, wantErr)
+			assert.Nil(t, topic)
+		})
+	}
+}
+
+func TestStrimziMissingTopic(t *testing.T) {
+	provider := StrimziBindingProvider{Client: fake.NewSimpleClientset()}
+	topic, err := provider.lookupTopic(BindingContext{Ctx: context.Background(), Namespace: "test"},
+		camelv1.Endpoint{Ref: &v1.ObjectReference{Name: "missing"}})
+	require.EqualError(t, err, "couldn't find any KafkaTopic with either name or topicName missing")
+	assert.Nil(t, topic)
 }

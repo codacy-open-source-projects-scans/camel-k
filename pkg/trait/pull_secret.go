@@ -22,11 +22,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
-	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
-
+	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/v2/pkg/platform"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
@@ -41,6 +39,9 @@ const (
 type pullSecretTrait struct {
 	BaseTrait
 	traitv1.PullSecretTrait `property:",squash"`
+
+	deprecatedImagePullerDelegation *bool
+	secretName                      string
 }
 
 func newPullSecretTrait() Trait {
@@ -50,62 +51,78 @@ func newPullSecretTrait() Trait {
 }
 
 func (t *pullSecretTrait) Configure(e *Environment) (bool, *TraitCondition, error) {
+	var condition *TraitCondition
+	var err error
 	if e.Integration == nil {
-		return false, nil, nil
+		return false, condition, nil
 	}
 	if !ptr.Deref(t.Enabled, true) {
 		return false, NewIntegrationConditionUserDisabled("PullSecret"), nil
 	}
 	if !e.IntegrationInRunningPhases() {
-		return false, nil, nil
+		return false, condition, nil
 	}
 
 	if ptr.Deref(t.Auto, true) {
-		err := t.autoConfigure(e)
+		condition, err = t.autoConfigure(e)
 		if err != nil {
-			return false, nil, err
+			return false, condition, err
 		}
 	}
 
-	return t.SecretName != "" || ptr.Deref(t.ImagePullerDelegation, false), nil, nil
+	if t.SecretName != "" {
+		t.secretName = t.SecretName
+	}
+
+	//nolint:staticcheck
+	t.deprecatedImagePullerDelegation = t.ImagePullerDelegation
+
+	return t.secretName != "" || ptr.Deref(t.deprecatedImagePullerDelegation, false), condition, nil
 }
-func (t *pullSecretTrait) autoConfigure(e *Environment) error {
-	if t.SecretName == "" {
-		s, err := t.resolveSecret(e)
-		if err != nil {
-			return err
-		}
-
-		t.SecretName = s
-	}
-
-	if t.ImagePullerDelegation == nil {
+func (t *pullSecretTrait) autoConfigure(e *Environment) (*TraitCondition, error) {
+	var condition *TraitCondition
+	if t.deprecatedImagePullerDelegation == nil {
 		var isOpenShift bool
 		if t.Client != nil {
 			var err error
 			isOpenShift, err = openshift.IsOpenShift(t.Client)
 			if err != nil {
-				return err
+				return condition, err
 			}
 		}
 		isOperatorGlobal := platform.IsCurrentOperatorGlobal()
 		isKitExternal := e.Integration.GetIntegrationKitNamespace(e.Platform.CatalogNamespace) != e.Integration.Namespace
 		needsDelegation := isOpenShift && isOperatorGlobal && isKitExternal
-		t.ImagePullerDelegation = &needsDelegation
+		t.deprecatedImagePullerDelegation = &needsDelegation
 	}
 
-	return nil
+	if t.SecretName == "" && e.Platform.Registry.Secret != "" {
+		// This is deprecated and will be removed in future versions
+		t.secretName = e.Platform.Registry.Secret
+
+		condition = NewIntegrationCondition(
+			"PullSecret",
+			v1.IntegrationConditionTraitInfo,
+			corev1.ConditionTrue,
+			TraitConfigurationReason,
+			"Setting the configured operator pull secret: this feature is deprecated and will be removed in the future. "+
+				"Use pull-secret trait explicitly instead.",
+		)
+	}
+
+	return condition, nil
 }
 
 func (t *pullSecretTrait) Apply(e *Environment) error {
-	if t.SecretName != "" {
+	if t.secretName != "" {
 		e.Resources.VisitPodSpec(func(p *corev1.PodSpec) {
 			p.ImagePullSecrets = append(p.ImagePullSecrets, corev1.LocalObjectReference{
-				Name: t.SecretName,
+				Name: t.secretName,
 			})
 		})
 	}
-	if ptr.Deref(t.ImagePullerDelegation, false) {
+
+	if ptr.Deref(t.deprecatedImagePullerDelegation, false) {
 		if err := t.delegateImagePuller(e); err != nil {
 			return err
 		}
@@ -134,14 +151,10 @@ func (t *pullSecretTrait) newImagePullerRoleBinding(e *Environment) *rbacv1.Role
 	}
 
 	return &rbacv1.RoleBinding{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "RoleBinding",
-			APIVersion: rbacv1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: targetNamespace,
-			Name:      fmt.Sprintf("camel-k-puller-%s-%s", e.Integration.Namespace, serviceAccount),
-		},
+		Kind:       "RoleBinding",
+		APIVersion: rbacv1.SchemeGroupVersion.String(),
+		Namespace:  targetNamespace,
+		Name:       fmt.Sprintf("camel-k-puller-%s-%s", e.Integration.Namespace, serviceAccount),
 		RoleRef: rbacv1.RoleRef{
 			Kind: "ClusterRole",
 			Name: "system:image-puller",
@@ -154,23 +167,4 @@ func (t *pullSecretTrait) newImagePullerRoleBinding(e *Environment) *rbacv1.Role
 			},
 		},
 	}
-}
-
-func (t *pullSecretTrait) resolveSecret(e *Environment) (string, error) {
-	secret := e.Platform.Registry.Secret
-	if secret == "" {
-		return "", nil
-	}
-
-	key := ctrl.ObjectKey{Namespace: e.Platform.Registry.Organization, Name: secret}
-	obj := corev1.Secret{}
-	if err := t.Client.Get(e.Ctx, key, &obj); err != nil {
-		return "", err
-	}
-
-	if obj.Type != corev1.SecretTypeDockerConfigJson {
-		return "", nil
-	}
-
-	return secret, nil
 }

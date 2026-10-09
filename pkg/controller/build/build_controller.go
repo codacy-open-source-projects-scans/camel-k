@@ -151,17 +151,12 @@ func (r *reconcileBuild) Reconcile(ctx context.Context, request reconcile.Reques
 
 	var actions []Action
 
-	pl := platform.SingletonPlatform
-	ip, err := platform.GetForResource(ctx, r.client, &instance)
-	if err == nil {
-		// NOTE: whatever is the error we don't really care. If a deprecated platform exists, then
-		// we use it. Otherwise we use the conf coming from env var
-		pl = platform.FromIntegrationPlatform(ip)
-	}
+	ip, _ := platform.GetForResource(ctx, r.client, &instance)
+	envPlatform := platform.GetPlatform(ip, nil)
 
 	buildMonitor := Monitor{
-		maxRunningBuilds:   pl.MaxRunningBuilds,
-		buildOrderStrategy: pl.BuildConfiguration.OrderStrategy,
+		maxRunningBuilds:   envPlatform.MaxRunningBuilds,
+		buildOrderStrategy: envPlatform.BuildConfiguration.OrderStrategy,
 	}
 
 	switch instance.BuilderConfiguration().Strategy {
@@ -196,7 +191,12 @@ func (r *reconcileBuild) Reconcile(ctx context.Context, request reconcile.Reques
 
 		newTarget, err := a.Handle(ctx, target)
 		if err != nil {
-			camelevent.NotifyError(r.recorder, &instance, newTarget, instance.Name, instance.Kind, err)
+			// NotFound means the Build was deleted mid-reconcile (stale cache); benign, not an error.
+			if k8serrors.IsNotFound(err) {
+				return reconcile.Result{}, nil
+			}
+
+			camelevent.NotifyError(r.recorder, &instance, target, instance.Name, instance.Kind, err)
 
 			return reconcile.Result{}, err
 		}
@@ -204,6 +204,10 @@ func (r *reconcileBuild) Reconcile(ctx context.Context, request reconcile.Reques
 		if newTarget != nil {
 			err := r.update(ctx, targetLog, &instance, newTarget)
 			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					return reconcile.Result{}, nil
+				}
+
 				return reconcile.Result{}, err
 			}
 

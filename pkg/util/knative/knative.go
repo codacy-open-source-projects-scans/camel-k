@@ -30,42 +30,36 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"knative.dev/pkg/apis"
 
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
-	eventing "knative.dev/eventing/pkg/apis/eventing/v1"
-	messaging "knative.dev/eventing/pkg/apis/messaging/v1"
-	sources "knative.dev/eventing/pkg/apis/sources/v1"
-	"knative.dev/pkg/apis/duck"
-	duckv1 "knative.dev/pkg/apis/duck/v1"
-	"knative.dev/pkg/tracker"
-	serving "knative.dev/serving/pkg/apis/serving/v1"
-
+	"github.com/apache/camel-k/v2/pkg/apis/duck/knative/apis"
+	eventing "github.com/apache/camel-k/v2/pkg/apis/duck/knative/eventing/v1"
+	messaging "github.com/apache/camel-k/v2/pkg/apis/duck/knative/messaging/v1"
+	serving "github.com/apache/camel-k/v2/pkg/apis/duck/knative/serving/v1"
+	sources "github.com/apache/camel-k/v2/pkg/apis/duck/knative/sources/v1"
 	"github.com/apache/camel-k/v2/pkg/client"
 	util "github.com/apache/camel-k/v2/pkg/util/kubernetes"
 )
 
+const knativeService = "Service"
+
 func CreateSubscription(channelReference corev1.ObjectReference, serviceName string, path string) *messaging.Subscription {
 	return &messaging.Subscription{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: messaging.SchemeGroupVersion.String(),
-			Kind:       "Subscription",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: channelReference.Namespace,
-			Name:      channelReference.Name + "-" + serviceName,
-		},
+		APIVersion: messaging.SchemeGroupVersion.String(),
+		Kind:       "Subscription",
+		Namespace:  channelReference.Namespace,
+		Name:       channelReference.Name + "-" + serviceName,
 		Spec: messaging.SubscriptionSpec{
-			Channel: duckv1.KReference{
+			Channel: apis.KReference{
 				APIVersion: channelReference.GroupVersionKind().GroupVersion().String(),
 				Kind:       channelReference.Kind,
 				Name:       channelReference.Name,
 			},
-			Subscriber: &duckv1.Destination{
-				Ref: &duckv1.KReference{
+			Subscriber: &apis.Destination{
+				Ref: &apis.KReference{
 					APIVersion: serving.SchemeGroupVersion.String(),
-					Kind:       "Service",
+					Kind:       knativeService,
 					Name:       serviceName,
 				},
 				URI: &apis.URL{
@@ -78,9 +72,9 @@ func CreateSubscription(channelReference corev1.ObjectReference, serviceName str
 
 // CreateServiceTrigger create Knative trigger with arbitrary Kubernetes Service as a subscriber - usually used when no Knative Serving is available on the cluster.
 func CreateServiceTrigger(brokerReference corev1.ObjectReference, serviceName string, eventType string, path string, attributes map[string]string) (*eventing.Trigger, error) {
-	subscriberRef := duckv1.KReference{
+	subscriberRef := apis.KReference{
 		APIVersion: "v1",
-		Kind:       "Service",
+		Kind:       knativeService,
 		Name:       serviceName,
 	}
 
@@ -89,28 +83,24 @@ func CreateServiceTrigger(brokerReference corev1.ObjectReference, serviceName st
 
 // CreateKnativeServiceTrigger create Knative trigger with Knative Serving Service as a subscriber - default option when Knative Serving is available on the cluster.
 func CreateKnativeServiceTrigger(brokerReference corev1.ObjectReference, serviceName string, eventType string, path string, attributes map[string]string) (*eventing.Trigger, error) {
-	subscriberRef := duckv1.KReference{
+	subscriberRef := apis.KReference{
 		APIVersion: serving.SchemeGroupVersion.String(),
-		Kind:       "Service",
+		Kind:       knativeService,
 		Name:       serviceName,
 	}
 
 	return CreateTrigger(brokerReference, subscriberRef, eventType, path, attributes)
 }
 
-func CreateTrigger(brokerReference corev1.ObjectReference, subscriberRef duckv1.KReference, eventType string, path string, attributes map[string]string) (*eventing.Trigger, error) {
+func CreateTrigger(brokerReference corev1.ObjectReference, subscriberRef apis.KReference, eventType string, path string, attributes map[string]string) (*eventing.Trigger, error) {
 	trigger := eventing.Trigger{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: eventing.SchemeGroupVersion.String(),
-			Kind:       "Trigger",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: brokerReference.Namespace,
-			Name:      GetTriggerName(brokerReference.Name, subscriberRef.Name, eventType),
-		},
+		APIVersion: eventing.SchemeGroupVersion.String(),
+		Kind:       "Trigger",
+		Namespace:  brokerReference.Namespace,
+		Name:       GetTriggerName(brokerReference.Name, subscriberRef.Name, eventType),
 		Spec: eventing.TriggerSpec{
 			Broker: brokerReference.Name,
-			Subscriber: duckv1.Destination{
+			Subscriber: apis.Destination{
 				Ref: &subscriberRef,
 				URI: &apis.URL{
 					Path: path,
@@ -139,25 +129,21 @@ func GetTriggerName(brokerName string, subscriberName string, eventType string) 
 
 func CreateSinkBinding(source corev1.ObjectReference, target corev1.ObjectReference) *sources.SinkBinding {
 	return &sources.SinkBinding{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: sources.SchemeGroupVersion.String(),
-			Kind:       "SinkBinding",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: source.Namespace,
-			Name:      source.Name,
-		},
+		APIVersion: sources.SchemeGroupVersion.String(),
+		Kind:       "SinkBinding",
+		Namespace:  source.Namespace,
+		Name:       source.Name,
 		Spec: sources.SinkBindingSpec{
-			BindingSpec: duckv1.BindingSpec{
-				Subject: tracker.Reference{
+			BindingSpec: apis.BindingSpec{
+				Subject: apis.Reference{
 					APIVersion: source.APIVersion,
 					Kind:       source.Kind,
 					Name:       source.Name,
 				},
 			},
-			SourceSpec: duckv1.SourceSpec{
-				Sink: duckv1.Destination{
-					Ref: &duckv1.KReference{
+			SourceSpec: apis.SourceSpec{
+				Sink: apis.Destination{
+					Ref: &apis.KReference{
 						APIVersion: target.APIVersion,
 						Kind:       target.Kind,
 						Name:       target.Name,
@@ -214,26 +200,27 @@ func getSinkURI(ctx context.Context, c client.Client, sink *corev1.ObjectReferen
 
 	objIdentifier := fmt.Sprintf("\"%s/%s\" (%s)", u.GetNamespace(), u.GetName(), u.GroupVersionKind())
 	// Special case v1/Service allowing it to be addressable
-	if u.GroupVersionKind().Kind == "Service" && u.GroupVersionKind().Group == "" && u.GroupVersionKind().Version == "v1" {
+	if u.GroupVersionKind().Kind == knativeService && u.GroupVersionKind().Group == "" && u.GroupVersionKind().Version == "v1" {
 		return fmt.Sprintf("http://%s.%s.svc/", u.GetName(), u.GetNamespace()), nil
 	}
 
-	t := duckv1.AddressableType{}
-	err = duck.FromUnstructured(u, &t)
+	addressURL, found, err := unstructured.NestedString(u.Object, "status", "address", "url")
 	if err != nil {
 		return "", fmt.Errorf("failed to deserialize sink %s: %w", objIdentifier, err)
 	}
-
-	if t.Status.Address == nil || t.Status.Address.URL == nil {
+	if !found || addressURL == "" {
 		return "", fmt.Errorf("sink %s does not contain address or URL", objIdentifier)
 	}
 
-	addressURL := t.Status.Address.URL
-	if addressURL.Host == "" {
+	parsedURL, err := url.Parse(addressURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to deserialize sink %s: %w", objIdentifier, err)
+	}
+	if parsedURL.Host == "" {
 		return "", fmt.Errorf("sink %s contains an empty hostname", objIdentifier)
 	}
 
-	return addressURL.String(), nil
+	return parsedURL.String(), nil
 }
 
 // EnableKnativeBindInNamespace sets the "bindings.knative.dev/include=true" label to the namespace, only

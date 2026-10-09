@@ -37,16 +37,14 @@ import (
 
 func TestConfigurePodTraitDoesSucceed(t *testing.T) {
 	trait, environment, _ := createPodTest("")
-	configured, condition, err := trait.Configure(environment)
+	configured, _, err := trait.Configure(environment)
 
 	assert.True(t, configured)
-	assert.NotNil(t, condition)
 	require.NoError(t, err)
 
-	configured, condition, err = trait.Configure(environment)
+	configured, _, err = trait.Configure(environment)
 
 	assert.True(t, configured)
-	assert.NotNil(t, condition)
 	require.NoError(t, err)
 }
 
@@ -110,6 +108,14 @@ func TestAutomountServiceAccountToken(t *testing.T) {
 
 	assert.NotNil(t, templateSpec.Spec.AutomountServiceAccountToken)
 	assert.False(t, *templateSpec.Spec.AutomountServiceAccountToken)
+}
+
+func TestEnableServiceLinks(t *testing.T) {
+	templateString := `enableServiceLinks: false`
+	templateSpec := testPodTemplateSpec(t, templateString)
+
+	assert.NotNil(t, templateSpec.Spec.EnableServiceLinks)
+	assert.False(t, *templateSpec.Spec.EnableServiceLinks)
 }
 
 // nolint: unparam
@@ -214,9 +220,8 @@ func testPodTemplateSpec(t *testing.T, template string) corev1.PodTemplateSpec {
 
 	trait, environment, _ := createPodTest(template)
 
-	_, condition, err := trait.Configure(environment)
+	_, _, err := trait.Configure(environment)
 	require.NoError(t, err)
-	assert.NotNil(t, condition)
 
 	err = trait.Apply(environment)
 	require.NoError(t, err)

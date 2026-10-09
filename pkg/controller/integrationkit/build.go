@@ -119,20 +119,14 @@ func (action *buildAction) createBuild(ctx context.Context, kit *v1.IntegrationK
 
 	if v, ok := kit.Annotations[v1.IntegrationProfileAnnotation]; ok {
 		annotations[v1.IntegrationProfileAnnotation] = v
-
-		//nolint:staticcheck
-		if v, ok := kit.Annotations[v1.IntegrationProfileNamespaceAnnotation]; ok {
-			annotations[v1.IntegrationProfileNamespaceAnnotation] = v
-		}
 	}
 
 	operatorID := defaults.OperatorID()
 	if operatorID != "" {
+		//nolint:staticcheck
 		annotations[v1.OperatorIDAnnotation] = operatorID
 	}
 
-	// We may need to change certain builder configuration values
-	operatorNamespace := platform.GetOperatorNamespace()
 	buildConfig := v1.ConfigurationTasksByName(env.Pipeline, "builder")
 	if buildConfig.IsEmpty() {
 		// default to IntegrationPlatform configuration
@@ -152,20 +146,15 @@ func (action *buildAction) createBuild(ctx context.Context, kit *v1.IntegrationK
 	// The build operation, when executed as a Pod, should be executed by a container image containing the
 	// `kamel builder` command. Likely the same image running the operator should be fine.
 	buildConfig.ToolImage = platform.OperatorImage
-	buildConfig.BuilderPodNamespace = operatorNamespace
 	v1.SetBuilderConfigurationTasks(env.Pipeline, buildConfig)
 
 	build := &v1.Build{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: v1.SchemeGroupVersion.String(),
-			Kind:       v1.BuildKind,
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace:   kit.Namespace,
-			Name:        kit.Name,
-			Labels:      labels,
-			Annotations: annotations,
-		},
+		APIVersion:  v1.SchemeGroupVersion.String(),
+		Kind:        v1.BuildKind,
+		Namespace:   kit.Namespace,
+		Name:        kit.Name,
+		Labels:      labels,
+		Annotations: annotations,
 		Spec: v1.BuildSpec{
 			Tasks: env.Pipeline,
 		},

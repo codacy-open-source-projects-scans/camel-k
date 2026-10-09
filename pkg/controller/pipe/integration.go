@@ -61,20 +61,18 @@ func CreateIntegrationFor(ctx context.Context, c client.Client, pipe *v1.Pipe) (
 	}
 
 	it := v1.Integration{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace:   pipe.Namespace,
-			Name:        pipe.Name,
-			Annotations: annotations,
-			Labels:      util.CopyMap(pipe.Labels),
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         pipe.APIVersion,
-					Kind:               pipe.Kind,
-					Name:               pipe.Name,
-					UID:                pipe.UID,
-					Controller:         &controller,
-					BlockOwnerDeletion: &blockOwnerDeletion,
-				},
+		Namespace:   pipe.Namespace,
+		Name:        pipe.Name,
+		Annotations: annotations,
+		Labels:      util.CopyMap(pipe.Labels),
+		OwnerReferences: []metav1.OwnerReference{
+			{
+				APIVersion:         pipe.APIVersion,
+				Kind:               pipe.Kind,
+				Name:               pipe.Name,
+				UID:                pipe.UID,
+				Controller:         &controller,
+				BlockOwnerDeletion: &blockOwnerDeletion,
 			},
 		},
 	}
@@ -104,6 +102,7 @@ func CreateIntegrationFor(ctx context.Context, c client.Client, pipe *v1.Pipe) (
 	if err != nil {
 		return nil, err
 	}
+	//nolint:staticcheck
 	it.Spec.Profile = profile
 
 	if pipe.Spec.ServiceAccountName != "" {
@@ -261,6 +260,7 @@ func configureBinding(integration *v1.Integration, bindings ...*bindings.Binding
 	return nil
 }
 
+//nolint:staticcheck
 func determineTraitProfile(ctx context.Context, c client.Client, binding *v1.Pipe) (v1.TraitProfile, error) {
 	pl, err := platform.GetForResource(ctx, c, binding)
 	if err != nil && !k8serrors.IsNotFound(err) {

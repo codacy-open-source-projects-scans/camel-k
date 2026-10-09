@@ -20,7 +20,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: builds.camel.apache.org
 spec:
   group: camel.apache.org
@@ -111,8 +111,10 @@ spec:
                       for `pod` strategy
                     type: object
                   operatorNamespace:
-                    description: The namespace where to run the builder Pod (must
-                      be the same of the operator in charge of this Build reconciliation).
+                    description: |-
+                      The namespace where to run the builder Pod (must be the same of the operator in charge of this Build reconciliation).
+
+                      Deprecated: no longer in use.
                     type: string
                   orderStrategy:
                     description: the build order strategy to adopt
@@ -198,9 +200,10 @@ spec:
                                 Only used for `pod` strategy
                               type: object
                             operatorNamespace:
-                              description: The namespace where to run the builder
-                                Pod (must be the same of the operator in charge of
-                                this Build reconciliation).
+                              description: |-
+                                The namespace where to run the builder Pod (must be the same of the operator in charge of this Build reconciliation).
+
+                                Deprecated: no longer in use.
                               type: string
                             orderStrategy:
                               description: the build order strategy to adopt
@@ -308,9 +311,10 @@ spec:
                                 Only used for `pod` strategy
                               type: object
                             operatorNamespace:
-                              description: The namespace where to run the builder
-                                Pod (must be the same of the operator in charge of
-                                this Build reconciliation).
+                              description: |-
+                                The namespace where to run the builder Pod (must be the same of the operator in charge of this Build reconciliation).
+
+                                Deprecated: no longer in use.
                               type: string
                             orderStrategy:
                               description: the build order strategy to adopt
@@ -421,9 +425,7 @@ spec:
                                 type: string
                               type: array
                             extension:
-                              description: |-
-                                The Maven build extensions.
-                                See https://maven.apache.org/guides/mini/guide-using-extensions.html.
+                              description: 'Deprecated: no longer in use.'
                               items:
                                 description: MavenArtifact defines a GAV (Group:Artifact:Type:Version:Classifier)
                                   Maven artifact.
@@ -452,9 +454,7 @@ spec:
                               description: The path of the local Maven repository.
                               type: string
                             profiles:
-                              description: |-
-                                A reference to the ConfigMap or Secret key that contains
-                                the Maven profile.
+                              description: 'Deprecated: no longer in use.'
                               items:
                                 description: ValueSource --.
                                 properties:
@@ -462,7 +462,9 @@ spec:
                                     description: Selects a key of a ConfigMap.
                                     properties:
                                       key:
-                                        description: The key to select.
+                                        description: |-
+                                          The key to select from the ConfigMap's Data field.
+                                          Keys in the BinaryData field are not currently propagated to container env vars.
                                         type: string
                                       name:
                                         default: ""
@@ -602,7 +604,9 @@ spec:
                                   description: Selects a key of a ConfigMap.
                                   properties:
                                     key:
-                                      description: The key to select.
+                                      description: |-
+                                        The key to select from the ConfigMap's Data field.
+                                        Keys in the BinaryData field are not currently propagated to container env vars.
                                       type: string
                                     name:
                                       default: ""
@@ -655,7 +659,9 @@ spec:
                                   description: Selects a key of a ConfigMap.
                                   properties:
                                     key:
-                                      description: The key to select.
+                                      description: |-
+                                        The key to select from the ConfigMap's Data field.
+                                        Keys in the BinaryData field are not currently propagated to container env vars.
                                       type: string
                                     name:
                                       default: ""
@@ -940,9 +946,10 @@ spec:
                                 Only used for `pod` strategy
                               type: object
                             operatorNamespace:
-                              description: The namespace where to run the builder
-                                Pod (must be the same of the operator in charge of
-                                this Build reconciliation).
+                              description: |-
+                                The namespace where to run the builder Pod (must be the same of the operator in charge of this Build reconciliation).
+
+                                Deprecated: no longer in use.
                               type: string
                             orderStrategy:
                               description: the build order strategy to adopt
@@ -1021,9 +1028,10 @@ spec:
                                 Only used for `pod` strategy
                               type: object
                             operatorNamespace:
-                              description: The namespace where to run the builder
-                                Pod (must be the same of the operator in charge of
-                                this Build reconciliation).
+                              description: |-
+                                The namespace where to run the builder Pod (must be the same of the operator in charge of this Build reconciliation).
+
+                                Deprecated: no longer in use.
                               type: string
                             orderStrategy:
                               description: the build order strategy to adopt
@@ -1132,9 +1140,10 @@ spec:
                                 Only used for `pod` strategy
                               type: object
                             operatorNamespace:
-                              description: The namespace where to run the builder
-                                Pod (must be the same of the operator in charge of
-                                this Build reconciliation).
+                              description: |-
+                                The namespace where to run the builder Pod (must be the same of the operator in charge of this Build reconciliation).
+
+                                Deprecated: no longer in use.
                               type: string
                             orderStrategy:
                               description: the build order strategy to adopt
@@ -1241,9 +1250,10 @@ spec:
                                 Only used for `pod` strategy
                               type: object
                             operatorNamespace:
-                              description: The namespace where to run the builder
-                                Pod (must be the same of the operator in charge of
-                                this Build reconciliation).
+                              description: |-
+                                The namespace where to run the builder Pod (must be the same of the operator in charge of this Build reconciliation).
+
+                                Deprecated: no longer in use.
                               type: string
                             orderStrategy:
                               description: the build order strategy to adopt
@@ -1354,9 +1364,7 @@ spec:
                                 type: string
                               type: array
                             extension:
-                              description: |-
-                                The Maven build extensions.
-                                See https://maven.apache.org/guides/mini/guide-using-extensions.html.
+                              description: 'Deprecated: no longer in use.'
                               items:
                                 description: MavenArtifact defines a GAV (Group:Artifact:Type:Version:Classifier)
                                   Maven artifact.
@@ -1385,9 +1393,7 @@ spec:
                               description: The path of the local Maven repository.
                               type: string
                             profiles:
-                              description: |-
-                                A reference to the ConfigMap or Secret key that contains
-                                the Maven profile.
+                              description: 'Deprecated: no longer in use.'
                               items:
                                 description: ValueSource --.
                                 properties:
@@ -1395,7 +1401,9 @@ spec:
                                     description: Selects a key of a ConfigMap.
                                     properties:
                                       key:
-                                        description: The key to select.
+                                        description: |-
+                                          The key to select from the ConfigMap's Data field.
+                                          Keys in the BinaryData field are not currently propagated to container env vars.
                                         type: string
                                       name:
                                         default: ""
@@ -1535,7 +1543,9 @@ spec:
                                   description: Selects a key of a ConfigMap.
                                   properties:
                                     key:
-                                      description: The key to select.
+                                      description: |-
+                                        The key to select from the ConfigMap's Data field.
+                                        Keys in the BinaryData field are not currently propagated to container env vars.
                                       type: string
                                     name:
                                       default: ""
@@ -1588,7 +1598,9 @@ spec:
                                   description: Selects a key of a ConfigMap.
                                   properties:
                                     key:
-                                      description: The key to select.
+                                      description: |-
+                                        The key to select from the ConfigMap's Data field.
+                                        Keys in the BinaryData field are not currently propagated to container env vars.
                                       type: string
                                     name:
                                       default: ""
@@ -1867,9 +1879,10 @@ spec:
                                 Only used for `pod` strategy
                               type: object
                             operatorNamespace:
-                              description: The namespace where to run the builder
-                                Pod (must be the same of the operator in charge of
-                                this Build reconciliation).
+                              description: |-
+                                The namespace where to run the builder Pod (must be the same of the operator in charge of this Build reconciliation).
+
+                                Deprecated: no longer in use.
                               type: string
                             orderStrategy:
                               description: the build order strategy to adopt
@@ -1971,9 +1984,10 @@ spec:
                                 Only used for `pod` strategy
                               type: object
                             operatorNamespace:
-                              description: The namespace where to run the builder
-                                Pod (must be the same of the operator in charge of
-                                this Build reconciliation).
+                              description: |-
+                                The namespace where to run the builder Pod (must be the same of the operator in charge of this Build reconciliation).
+
+                                Deprecated: no longer in use.
                               type: string
                             orderStrategy:
                               description: the build order strategy to adopt

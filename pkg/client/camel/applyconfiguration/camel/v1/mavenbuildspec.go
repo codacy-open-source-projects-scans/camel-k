@@ -29,7 +29,7 @@ import (
 // MavenBuildSpec defines the Maven configuration plus additional repositories to use.
 type MavenBuildSpecApplyConfiguration struct {
 	// base Maven specification
-	MavenSpecApplyConfiguration `json:",inline"`
+	MavenSpecApplyConfiguration `json:""`
 	// additional repositories
 	Repositories []RepositoryApplyConfiguration `json:"repositories,omitempty"`
 	// Servers (auth)
@@ -66,15 +66,15 @@ func (b *MavenBuildSpecApplyConfiguration) WithProperties(entries map[string]str
 	return b
 }
 
-// WithProfiles adds the given value to the Profiles field in the declarative configuration
+// WithDeprecatedProfiles adds the given value to the DeprecatedProfiles field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, values provided by each call will be appended to the Profiles field.
-func (b *MavenBuildSpecApplyConfiguration) WithProfiles(values ...*ValueSourceApplyConfiguration) *MavenBuildSpecApplyConfiguration {
+// If called multiple times, values provided by each call will be appended to the DeprecatedProfiles field.
+func (b *MavenBuildSpecApplyConfiguration) WithDeprecatedProfiles(values ...*ValueSourceApplyConfiguration) *MavenBuildSpecApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
-			panic("nil value passed to WithProfiles")
+			panic("nil value passed to WithDeprecatedProfiles")
 		}
-		b.MavenSpecApplyConfiguration.Profiles = append(b.MavenSpecApplyConfiguration.Profiles, *values[i])
+		b.MavenSpecApplyConfiguration.DeprecatedProfiles = append(b.MavenSpecApplyConfiguration.DeprecatedProfiles, *values[i])
 	}
 	return b
 }
@@ -105,15 +105,15 @@ func (b *MavenBuildSpecApplyConfiguration) WithCASecrets(values ...corev1.Secret
 	return b
 }
 
-// WithExtension adds the given value to the Extension field in the declarative configuration
+// WithDeprecatedExtension adds the given value to the DeprecatedExtension field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, values provided by each call will be appended to the Extension field.
-func (b *MavenBuildSpecApplyConfiguration) WithExtension(values ...*MavenArtifactApplyConfiguration) *MavenBuildSpecApplyConfiguration {
+// If called multiple times, values provided by each call will be appended to the DeprecatedExtension field.
+func (b *MavenBuildSpecApplyConfiguration) WithDeprecatedExtension(values ...*MavenArtifactApplyConfiguration) *MavenBuildSpecApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
-			panic("nil value passed to WithExtension")
+			panic("nil value passed to WithDeprecatedExtension")
 		}
-		b.MavenSpecApplyConfiguration.Extension = append(b.MavenSpecApplyConfiguration.Extension, *values[i])
+		b.MavenSpecApplyConfiguration.DeprecatedExtension = append(b.MavenSpecApplyConfiguration.DeprecatedExtension, *values[i])
 	}
 	return b
 }

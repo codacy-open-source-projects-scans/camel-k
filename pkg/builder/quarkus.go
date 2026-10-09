@@ -111,7 +111,7 @@ func loadCamelQuarkusCatalog(ctx *builderContext) error {
 	if runtime.Provider == v1.RuntimeProviderPlainQuarkus {
 		// We need this workaround to load the last existing catalog
 		// TODO: this part will be subject to future refactoring
-		runtime.Version = defaults.DefaultRuntimeVersion
+		runtime.Version = defaults.CamelKRuntimeCatalogVersion
 	}
 
 	catalog, err := camel.LoadCatalog(ctx.C, ctx.Client, ctx.Namespace, *runtime)
@@ -136,8 +136,6 @@ func generateQuarkusProject(ctx *builderContext) error {
 		ctx.Build.Runtime.Version,
 		ctx.Build.Runtime.Metadata["quarkus.version"],
 	)
-	// Add Maven build extensions
-	p.Build.Extensions = &ctx.Build.Maven.Extension
 	// Add Maven repositories
 	p.Repositories = append(p.Repositories, ctx.Build.Maven.Repositories...)
 	p.PluginRepositories = append(p.PluginRepositories, ctx.Build.Maven.Repositories...)
@@ -265,7 +263,13 @@ func computeApplicationProperties(appPropertiesPath string, applicationPropertie
 	applicationProperties["quarkus.camel.routes-discovery.enabled"] = boolean.FalseString
 	// required for to resolve data type transformers at runtime with service discovery
 	// the different Camel runtimes use different resource paths for the service lookup
-	applicationProperties["quarkus.camel.service.discovery.include-patterns"] = "META-INF/services/org/apache/camel/datatype/converter/*,META-INF/services/org/apache/camel/datatype/transformer/*,META-INF/services/org/apache/camel/transformer/*"
+	serviceDiscoveryVar := "quarkus.camel.service.discovery.include-patterns"
+	serviceDiscoveryProp := "META-INF/services/org/apache/camel/datatype/converter/*,META-INF/services/org/apache/camel/datatype/transformer/*,META-INF/services/org/apache/camel/transformer/*"
+	if applicationProperties[serviceDiscoveryVar] == "" {
+		applicationProperties[serviceDiscoveryVar] = serviceDiscoveryProp
+	} else {
+		applicationProperties[serviceDiscoveryVar] = applicationProperties[serviceDiscoveryVar] + "," + serviceDiscoveryProp
+	}
 	// Workaround to prevent JS runtime errors, see https://github.com/apache/camel-quarkus/issues/5678
 	applicationProperties["quarkus.class-loading.parent-first-artifacts"] = "org.graalvm.regex:regex"
 	defer f.Close()

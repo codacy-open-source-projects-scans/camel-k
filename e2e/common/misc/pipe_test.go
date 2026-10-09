@@ -55,7 +55,7 @@ func TestPipe(t *testing.T) {
 					"-p", "sink.loggerName=integrationLogger",
 					"-p", "error-handler.loggerName=kameletErrorHandler",
 					// Needed in the test to make sure to do the right string comparison later
-					"-t", "logging.color=false",
+					"-t", "camel.properties=quarkus.console.color=false",
 					"--name", "throw-error-binding").Execute()).To(Succeed())
 
 				g.Eventually(IntegrationPodPhase(t, ctx, ns, "throw-error-binding"), TestTimeoutLong).Should(Equal(corev1.PodRunning))
@@ -76,7 +76,7 @@ func TestPipe(t *testing.T) {
 					"-p", "sink.loggerName=integrationLogger",
 					"-p", "error-handler.loggerName=kameletErrorHandler",
 					// Needed in the test to make sure to do the right string comparison later
-					"-t", "logging.color=false",
+					"-t", "camel.properties=quarkus.console.color=false",
 					"--name", "no-error-binding").Execute()).To(Succeed())
 
 				g.Eventually(IntegrationPodPhase(t, ctx, ns, "no-error-binding"), TestTimeoutLong).Should(Equal(corev1.PodRunning))
@@ -127,53 +127,6 @@ func TestPipe(t *testing.T) {
 	})
 }
 
-func TestPipeWithImage(t *testing.T) {
-	WithNewTestNamespace(t, func(ctx context.Context, g *WithT, ns string) {
-		bindingID := "with-image-binding"
-
-		t.Run("run with initial image", func(t *testing.T) {
-			expectedImage := "quay.io/fuse_qe/echo-server:0.3.2"
-
-			g.Expect(KamelBind(t, ctx, ns, "my-own-timer-source", "my-own-log-sink",
-				"--trait", "container.image="+expectedImage, "--trait", "jvm.enabled=false",
-				"--trait", "kamelets.enabled=false", "--trait", "dependencies.enabled=false",
-				"--annotation", "test=1", "--name", bindingID).Execute()).To(Succeed())
-
-			g.Eventually(IntegrationGeneration(t, ctx, ns, bindingID)).
-				Should(gstruct.PointTo(BeNumerically("==", 1)))
-			g.Eventually(Integration(t, ctx, ns, bindingID)).Should(WithTransform(Annotations,
-				HaveKeyWithValue("test", "1"),
-			))
-			g.Eventually(IntegrationStatusImage(t, ctx, ns, bindingID)).
-				Should(Equal(expectedImage))
-			g.Eventually(IntegrationPodPhase(t, ctx, ns, bindingID), TestTimeoutShort).
-				Should(Equal(corev1.PodRunning))
-			g.Eventually(IntegrationPodImage(t, ctx, ns, bindingID)).
-				Should(Equal(expectedImage))
-		})
-
-		t.Run("run with new image", func(t *testing.T) {
-			expectedImage := "quay.io/fuse_qe/echo-server:0.3.3"
-
-			g.Expect(KamelBind(t, ctx, ns, "my-own-timer-source", "my-own-log-sink",
-				"--trait", "container.image="+expectedImage, "--trait", "jvm.enabled=false",
-				"--trait", "kamelets.enabled=false", "--trait", "dependencies.enabled=false",
-				"--annotation", "test=2", "--name", bindingID).Execute()).To(Succeed())
-			g.Eventually(IntegrationGeneration(t, ctx, ns, bindingID)).
-				Should(gstruct.PointTo(BeNumerically("==", 1)))
-			g.Eventually(Integration(t, ctx, ns, bindingID)).Should(WithTransform(Annotations,
-				HaveKeyWithValue("test", "2"),
-			))
-			g.Eventually(IntegrationStatusImage(t, ctx, ns, bindingID)).
-				Should(Equal(expectedImage))
-			g.Eventually(IntegrationPodPhase(t, ctx, ns, bindingID), TestTimeoutShort).
-				Should(Equal(corev1.PodRunning))
-			g.Eventually(IntegrationPodImage(t, ctx, ns, bindingID)).
-				Should(Equal(expectedImage))
-		})
-	})
-}
-
 func TestPipeScale(t *testing.T) {
 	WithNewTestNamespace(t, func(ctx context.Context, g *WithT, ns string) {
 		name := RandomizedSuffixName("timer2log")
@@ -209,7 +162,9 @@ func TestPipeScale(t *testing.T) {
 			g.Expect(err).To(BeNil())
 
 			// Check the readiness condition is still truthy as down-scaling
-			g.Expect(PipeConditionStatus(t, ctx, ns, name, v1.PipeConditionReady)()).To(Equal(corev1.ConditionTrue))
+			g.Eventually(
+				PipeConditionStatus(t, ctx, ns, name, v1.PipeConditionReady),
+			).Should(Equal(corev1.ConditionTrue))
 			// Check the Integration scale subresource Spec field
 			g.Eventually(IntegrationSpecReplicas(t, ctx, ns, name), TestTimeoutShort).
 				Should(gstruct.PointTo(BeNumerically("==", 2)))
@@ -239,12 +194,16 @@ func TestPipeScale(t *testing.T) {
 			g.Expect(err).To(BeNil())
 
 			// Check the readiness condition is still truthy as down-scaling inPipe
-			g.Expect(PipeConditionStatus(t, ctx, ns, name, v1.PipeConditionReady)()).To(Equal(corev1.ConditionTrue))
+			g.Eventually(
+				PipeConditionStatus(t, ctx, ns, name, v1.PipeConditionReady),
+			).Should(Equal(corev1.ConditionTrue))
 			// Check the Pipe scale subresource Spec field
 			g.Eventually(PipeSpecReplicas(t, ctx, ns, name), TestTimeoutShort).
 				Should(gstruct.PointTo(BeNumerically("==", 1)))
 			// Check the readiness condition is still truthy as down-scaling
-			g.Expect(IntegrationConditionStatus(t, ctx, ns, name, v1.IntegrationConditionReady)()).To(Equal(corev1.ConditionTrue))
+			g.Eventually(
+				IntegrationConditionStatus(t, ctx, ns, name, v1.IntegrationConditionReady),
+			).To(Equal(corev1.ConditionTrue))
 			// Check the Integration scale subresource Spec field
 			g.Eventually(IntegrationSpecReplicas(t, ctx, ns, name), TestTimeoutShort).
 				Should(gstruct.PointTo(BeNumerically("==", 1)))

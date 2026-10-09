@@ -22,7 +22,6 @@ import (
 	"fmt"
 
 	"reflect"
-	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -30,7 +29,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -41,10 +39,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"knative.dev/serving/pkg/apis/serving"
-	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
-
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
+	servingv1 "github.com/apache/camel-k/v2/pkg/apis/duck/knative/serving/v1"
 	"github.com/apache/camel-k/v2/pkg/client"
 	camelevent "github.com/apache/camel-k/v2/pkg/event"
 	"github.com/apache/camel-k/v2/pkg/platform"
@@ -68,7 +64,7 @@ func Add(ctx context.Context, mgr manager.Manager, c client.Client) error {
 		return fmt.Errorf("unable to set up field indexer for status.phase: %w", err)
 	}
 
-	return add(ctx, mgr, c, newReconciler(mgr, c))
+	return add(mgr, c, newReconciler(mgr, c))
 }
 
 func newReconciler(mgr manager.Manager, c client.Client) reconcile.Reconciler {
@@ -82,11 +78,10 @@ func newReconciler(mgr manager.Manager, c client.Client) reconcile.Reconciler {
 
 	return monitoring.NewInstrumentedReconciler(
 		&reconcileIntegration{
-			client:           c,
-			scheme:           mgr.GetScheme(),
-			recorder:         mgr.GetEventRecorder("camel-k-integration-controller"),
-			syntheticActions: append(append([]Action{}, base...), NewMonitorSyntheticAction()),
-			baseActions:      append(append([]Action{}, base...), NewMonitorAction()),
+			client:      c,
+			scheme:      mgr.GetScheme(),
+			recorder:    mgr.GetEventRecorder("camel-k-integration-controller"),
+			baseActions: append(append([]Action{}, base...), NewMonitorAction()),
 		},
 		schema.GroupVersionKind{
 			Group:   v1.SchemeGroupVersion.Group,
@@ -149,12 +144,7 @@ func integrationKitEnqueueRequestsFromMapFunc(ctx context.Context, c client.Clie
 	}
 
 	list := &v1.IntegrationList{}
-	// Do global search in case of global operator (it may be using a global platform)
-	var opts []ctrl.ListOption
-	if !platform.IsCurrentOperatorGlobal() {
-		opts = append(opts, ctrl.InNamespace(kit.Namespace))
-	}
-	if err := c.List(ctx, list, opts...); err != nil {
+	if err := c.List(ctx, list); err != nil {
 		log.Error(err, "Failed to retrieve integration list")
 
 		return requests
@@ -181,10 +171,8 @@ func integrationKitEnqueueRequestsFromMapFunc(ctx context.Context, c client.Clie
 
 		log.Infof("Kit %s ready, notify integration: %s", kit.Name, integration.Name)
 		requests = append(requests, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Namespace: integration.Namespace,
-				Name:      integration.Name,
-			},
+			Namespace: integration.Namespace,
+			Name:      integration.Name,
 		})
 	}
 
@@ -246,10 +234,8 @@ func enqueueRequestsFromConfigFunc(ctx context.Context, c client.Client, res ctr
 		if found {
 			log.Infof("%s %s updated, wake-up integration: %s", res.GetObjectKind(), res.GetName(), integration.Name)
 			requests = append(requests, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Namespace: integration.Namespace,
-					Name:      integration.Name,
-				},
+				Namespace: integration.Namespace,
+				Name:      integration.Name,
 			})
 		}
 	}
@@ -280,10 +266,8 @@ func integrationPlatformEnqueueRequestsFromMapFunc(ctx context.Context, c client
 			if integration.Status.Phase == v1.IntegrationPhaseWaitingForPlatform {
 				log.Infof("Platform %s ready, wake-up integration: %s", p.Name, integration.Name)
 				requests = append(requests, reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Namespace: integration.Namespace,
-						Name:      integration.Name,
-					},
+					Namespace: integration.Namespace,
+					Name:      integration.Name,
 				})
 			}
 		}
@@ -292,7 +276,7 @@ func integrationPlatformEnqueueRequestsFromMapFunc(ctx context.Context, c client
 	return requests
 }
 
-func add(ctx context.Context, mgr manager.Manager, c client.Client, r reconcile.Reconciler) error {
+func add(mgr manager.Manager, c client.Client, r reconcile.Reconciler) error {
 	b := builder.ControllerManagedBy(mgr).
 		Named("integration-controller").
 		// Watch for changes to primary resource Integration
@@ -323,12 +307,9 @@ func add(ctx context.Context, mgr manager.Manager, c client.Client, r reconcile.
 		watchCronJobResources(b)
 	}
 	// Watch for the Knative Services conditionally
-	if ok, err := kubernetes.IsAPIResourceInstalled(c, servingv1.SchemeGroupVersion.String(), reflect.TypeFor[servingv1.Service]().Name()); err != nil {
+	err := watchKnativeResources(c, b)
+	if err != nil {
 		return err
-	} else if ok {
-		if err = watchKnativeResources(ctx, c, b); err != nil {
-			return err
-		}
 	}
 
 	return b.Complete(r)
@@ -410,10 +391,8 @@ func watchIntegrationResources(c client.Client, b *builder.Builder) {
 
 				return []reconcile.Request{
 					{
-						NamespacedName: types.NamespacedName{
-							Namespace: pod.GetNamespace(),
-							Name:      pod.Labels[v1.IntegrationLabel],
-						},
+						Namespace: pod.GetNamespace(),
+						Name:      pod.Labels[v1.IntegrationLabel],
 					},
 				}
 			})).
@@ -428,32 +407,23 @@ func watchCronJobResources(b *builder.Builder) {
 	b.Owns(&batchv1.CronJob{}, builder.WithPredicates(StatusChangedPredicate{}))
 }
 
-func watchKnativeResources(ctx context.Context, c client.Client, b *builder.Builder) error {
+func watchKnativeResources(c client.Client, b *builder.Builder) error {
 	// Watch for the owned Knative Services conditionally
 	ok, err := kubernetes.IsAPIResourceInstalled(c, servingv1.SchemeGroupVersion.String(), reflect.TypeFor[servingv1.Service]().Name())
 	if err != nil {
 		return err
 	}
 	if !ok {
-		log.Info(`KnativeService resources are not installed in the cluster. You can't use Knative features. If you install Knative Serving resources after the
-			Camel K operator, make sure to apply the required RBAC privileges and restart the Camel K Operator Pod to be able to watch for
-			Camel K managed Knative Services.`)
+		log.Info("KnativeService resources are not installed in the cluster. You can't use Knative serving features. " +
+			"If you install Knative Serving resources after the Camel K operator, make sure to apply the required RBAC privileges " +
+			"and restart the Camel K Operator Pod to be able to watch for Camel K managed Knative Services.")
 
 		return nil
 	}
 
-	// Check for permission to watch the Knative Service resource
-	checkCtx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-	if ok, err = kubernetes.CheckSelfPermission(checkCtx, c, serving.GroupName, "services", platform.GetOperatorWatchNamespace(), "", "watch"); err != nil {
-		return err
-	} else if ok {
-		log.Info("KnativeService resources installed in the cluster. RBAC privileges assigned correctly, you can use Knative features.")
-		b.Owns(&servingv1.Service{}, builder.WithPredicates(StatusChangedPredicate{}))
-	} else {
-		log.Info(` KnativeService resources installed in the cluster. However Camel K operator has not the required RBAC privileges. You can't use Knative features.
-				Make sure to apply the required RBAC privileges and restart the Camel K Operator Pod to be able to watch for Camel K managed Knative Services.`)
-	}
+	log.Info("KnativeService resources installed in the cluster. You can use Knative serving features: " +
+		"make sure to assign Knative Services RBAC privileges")
+	b.Owns(&servingv1.Service{}, builder.WithPredicates(StatusChangedPredicate{}))
 
 	return nil
 }
@@ -464,11 +434,10 @@ var _ reconcile.Reconciler = &reconcileIntegration{}
 type reconcileIntegration struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the API server
-	client           client.Client
-	scheme           *runtime.Scheme
-	recorder         events.EventRecorder
-	syntheticActions []Action
-	baseActions      []Action
+	client      client.Client
+	scheme      *runtime.Scheme
+	recorder    events.EventRecorder
+	baseActions []Action
 }
 
 // Reconcile reads that state of the cluster for an Integration object and makes changes based on the state read
@@ -513,12 +482,7 @@ func (r *reconcileIntegration) Reconcile(ctx context.Context, request reconcile.
 	target := instance.DeepCopy()
 	targetLog := rlog.ForIntegration(target)
 
-	actions := r.baseActions
-	if instance.IsSynthetic() {
-		actions = r.syntheticActions
-	}
-
-	for _, a := range actions {
+	for _, a := range r.baseActions {
 		a.InjectClient(r.client)
 		a.InjectLogger(targetLog)
 

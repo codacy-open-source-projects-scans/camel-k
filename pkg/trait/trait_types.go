@@ -29,9 +29,9 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	serving "knative.dev/serving/pkg/apis/serving/v1"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
+	serving "github.com/apache/camel-k/v2/pkg/apis/duck/knative/serving/v1"
 	"github.com/apache/camel-k/v2/pkg/client"
 	"github.com/apache/camel-k/v2/pkg/metadata"
 	"github.com/apache/camel-k/v2/pkg/platform"
@@ -88,7 +88,11 @@ type Trait interface {
 	RequiresIntegrationPlatform() bool
 
 	// IsAllowedInProfile tells if the trait supports the given profile
-	IsAllowedInProfile(traitProfile v1.TraitProfile) bool
+	//
+	// NOTE: when removing, we can just remove the call and the upstream calls as well.
+	//
+	// Deprecated: may be removed in future releases.
+	IsAllowedInProfile(traitProfile v1.TraitProfile) bool //nolint:staticcheck
 
 	// Order is the order in which the trait should be executed in the normal flow
 	Order() int
@@ -171,7 +175,7 @@ func (trait *BaseTrait) RequiresIntegrationPlatform() bool {
 }
 
 // IsAllowedInProfile returns true for any profile by default.
-func (trait *BaseTrait) IsAllowedInProfile(v1.TraitProfile) bool {
+func (trait *BaseTrait) IsAllowedInProfile(v1.TraitProfile) bool { //nolint:staticcheck
 	return true
 }
 
@@ -284,6 +288,8 @@ func (e *Environment) InPhase(c v1.IntegrationKitPhase, i v1.IntegrationPhase) b
 // First looking at the Integration.Spec for a Profile,
 // next looking at the IntegrationKit.Spec
 // and lastly the Platform Profile.
+//
+//nolint:staticcheck
 func (e *Environment) DetermineProfile() v1.TraitProfile {
 	if e.Integration != nil {
 		if e.Integration.Status.Profile != "" {
@@ -402,9 +408,7 @@ func getVolume(volName, storageType, storageName, filterKey, filterValue string)
 	switch storageType {
 	case configmapStorageType:
 		volume.ConfigMap = &corev1.ConfigMapVolumeSource{
-			LocalObjectReference: corev1.LocalObjectReference{
-				Name: storageName,
-			},
+			Name:  storageName,
 			Items: items,
 		}
 	case secretStorageType:
@@ -534,29 +538,6 @@ func (e *Environment) getIntegrationContainerPort() *corev1.ContainerPort {
 	}
 
 	return nil
-}
-
-// createContainerPort creates a new container port with values taken from Container trait or default.
-func (e *Environment) createContainerPort() *corev1.ContainerPort {
-	var name string
-	var port int32
-
-	if t := e.Catalog.GetTrait(containerTraitID); t != nil {
-		if ct, ok := t.(*containerTrait); ok {
-			name = ct.PortName
-			port = ct.getPort()
-		}
-	}
-
-	if name == "" {
-		name = e.determineDefaultContainerPortName()
-	}
-
-	return &corev1.ContainerPort{
-		Name:          name,
-		ContainerPort: port,
-		Protocol:      corev1.ProtocolTCP,
-	}
 }
 
 // CapabilityPropertyKey returns the key or expand any variable provided in it. vars variable contain the

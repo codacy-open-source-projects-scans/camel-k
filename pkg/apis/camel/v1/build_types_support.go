@@ -27,26 +27,11 @@ import (
 
 func NewBuild(namespace string, name string) *Build {
 	return &Build{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: SchemeGroupVersion.String(),
-			Kind:       BuildKind,
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
+		APIVersion: SchemeGroupVersion.String(),
+		Kind:       BuildKind,
+		Namespace:  namespace,
+		Name:       name,
 	}
-}
-
-// BuilderPodNamespace returns the namespace of the operator in charge to reconcile this Build.
-func (build *Build) BuilderPodNamespace() string {
-	for _, t := range build.Spec.Tasks {
-		if t.Builder != nil {
-			return t.Builder.Configuration.BuilderPodNamespace
-		}
-	}
-
-	return ""
 }
 
 // BuilderConfiguration returns the builder configuration for this Build.

@@ -23,9 +23,10 @@ import (
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	"github.com/apache/camel-k/v2/pkg/platform"
+	"github.com/apache/camel-k/v2/pkg/util/certmanager"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 )
 
@@ -40,6 +41,9 @@ const (
 type ingressTrait struct {
 	BaseTrait
 	traitv1.IngressTrait `property:",squash"`
+
+	certManagerAnnotationKey string
+	certManagerIssuerName    string
 }
 
 func newIngressTrait() Trait {
@@ -49,6 +53,8 @@ func newIngressTrait() Trait {
 }
 
 // IsAllowedInProfile overrides default.
+//
+//nolint:staticcheck
 func (t *ingressTrait) IsAllowedInProfile(profile v1.TraitProfile) bool {
 	return profile.Equal(v1.TraitProfileKubernetes)
 }
@@ -78,6 +84,16 @@ func (t *ingressTrait) Configure(e *Environment) (bool, *TraitCondition, error) 
 		}
 	}
 
+	if t.TLSSecretName == "" && (len(t.TLSHosts) > 0 || t.Host != "") &&
+		(t.TLSIssuerName != "" || ptr.Deref(t.TLSCertManagerAuto, false)) {
+		annotationKey, issuerName, err := t.resolveCertManagerIssuer(e)
+		if err != nil {
+			return false, nil, err
+		}
+		t.certManagerAnnotationKey = annotationKey
+		t.certManagerIssuerName = issuerName
+	}
+
 	//nolint:staticcheck
 	if t.Path != "" {
 		m := "The path parameter is deprecated and may be removed in a future release. Use the paths parameter instead."
@@ -103,23 +119,17 @@ func (t *ingressTrait) Apply(e *Environment) error {
 	}
 
 	ingress := networkingv1.Ingress{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Ingress",
-			APIVersion: networkingv1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        service.Name,
-			Namespace:   service.Namespace,
-			Annotations: t.Annotations,
-		},
+		Kind:        "Ingress",
+		APIVersion:  networkingv1.SchemeGroupVersion.String(),
+		Name:        service.Name,
+		Namespace:   service.Namespace,
+		Annotations: t.Annotations,
 		Spec: networkingv1.IngressSpec{
 			Rules: []networkingv1.IngressRule{
 				{
 					Host: t.Host,
-					IngressRuleValue: networkingv1.IngressRuleValue{
-						HTTP: &networkingv1.HTTPIngressRuleValue{
-							Paths: t.getPaths(service),
-						},
+					HTTP: &networkingv1.HTTPIngressRuleValue{
+						Paths: t.getPaths(service),
 					},
 				},
 			},
@@ -129,11 +139,33 @@ func (t *ingressTrait) Apply(e *Environment) error {
 		ingress.Spec.IngressClassName = &t.IngressClassName
 	}
 
-	if len(t.TLSHosts) > 0 && t.TLSSecretName != "" {
+	tlsHosts := t.TLSHosts
+	secretName := t.TLSSecretName
+
+	// The cert-manager annotation/issuer, if any, was already resolved in Configure().
+	// This only consumes that decision; it never talks to the cluster itself. It may
+	// fall back to t.Host so that auto-discovery also works for the common single-host
+	// case, without changing the pre-existing manual TLS behavior (which requires
+	// TLSHosts to be set explicitly and never considers t.Host).
+	if secretName == "" {
+		if len(tlsHosts) == 0 && t.Host != "" {
+			tlsHosts = []string{t.Host}
+		}
+
+		if len(tlsHosts) > 0 && t.certManagerIssuerName != "" {
+			if ingress.Annotations == nil {
+				ingress.Annotations = map[string]string{}
+			}
+			ingress.Annotations[t.certManagerAnnotationKey] = t.certManagerIssuerName
+			secretName = service.Name + "-tls"
+		}
+	}
+
+	if len(tlsHosts) > 0 && secretName != "" {
 		ingress.Spec.TLS = []networkingv1.IngressTLS{
 			{
-				Hosts:      t.TLSHosts,
-				SecretName: t.TLSSecretName,
+				Hosts:      tlsHosts,
+				SecretName: secretName,
 			},
 		}
 	}
@@ -150,6 +182,81 @@ func (t *ingressTrait) Apply(e *Environment) error {
 	)
 
 	return nil
+}
+
+// resolveCertManagerIssuer determines which cert-manager Issuer or ClusterIssuer
+// annotation to apply to the Ingress, if any. It returns an empty issuerName when
+// no annotation should be applied (cert-manager auto-discovery is disabled, cert-manager
+// is not installed, or no issuer is found). A forced TLSIssuerName is verified to exist
+// and returns an error if it does not; auto-discovery degrades to a no-op instead.
+func (t *ingressTrait) resolveCertManagerIssuer(e *Environment) (string, string, error) {
+	if t.TLSIssuerName != "" {
+		return t.resolveForcedCertManagerIssuer(e)
+	}
+
+	if !ptr.Deref(t.TLSCertManagerAuto, false) || !platform.CertManagerInstalled {
+		return "", "", nil
+	}
+
+	namespace := e.Integration.Namespace
+
+	clusterIssuers, err := certmanager.ListClusterIssuers(e.Ctx, t.Client)
+	if err != nil {
+		return "", "", err
+	}
+	if len(clusterIssuers) > 0 {
+		return certmanager.AnnotationClusterIssuer, clusterIssuers[0], nil
+	}
+
+	issuers, err := certmanager.ListIssuers(e.Ctx, t.Client, namespace)
+	if err != nil {
+		return "", "", err
+	}
+	if len(issuers) > 0 {
+		return certmanager.AnnotationIssuer, issuers[0], nil
+	}
+
+	return "", "", nil
+}
+
+// resolveForcedCertManagerIssuer verifies the existence of the user-forced
+// TLSIssuerName/TLSIssuerKind and returns its annotation key and name, or an
+// error if cert-manager or the named issuer is not available.
+func (t *ingressTrait) resolveForcedCertManagerIssuer(e *Environment) (string, string, error) {
+	if !platform.CertManagerInstalled {
+		return "", "", fmt.Errorf("cert-manager is not installed but tlsIssuerName %q was set", t.TLSIssuerName)
+	}
+
+	namespace := e.Integration.Namespace
+	kind := t.TLSIssuerKind
+	if kind == "" {
+		kind = "ClusterIssuer"
+	}
+
+	switch kind {
+	case "Issuer":
+		exists, err := certmanager.GetIssuer(e.Ctx, t.Client, namespace, t.TLSIssuerName)
+		if err != nil {
+			return "", "", err
+		}
+		if !exists {
+			return "", "", fmt.Errorf("issuer %q not found in namespace %q", t.TLSIssuerName, namespace)
+		}
+
+		return certmanager.AnnotationIssuer, t.TLSIssuerName, nil
+	case "ClusterIssuer":
+		exists, err := certmanager.GetClusterIssuer(e.Ctx, t.Client, t.TLSIssuerName)
+		if err != nil {
+			return "", "", err
+		}
+		if !exists {
+			return "", "", fmt.Errorf("clusterissuer %q not found", t.TLSIssuerName)
+		}
+
+		return certmanager.AnnotationClusterIssuer, t.TLSIssuerName, nil
+	default:
+		return "", "", fmt.Errorf("invalid tlsIssuerKind %q: must be %q or %q", kind, "Issuer", "ClusterIssuer")
+	}
 }
 
 func (t *ingressTrait) getPaths(service *corev1.Service) []networkingv1.HTTPIngressPath {
@@ -186,7 +293,7 @@ func (t *ingressTrait) getPaths(service *corev1.Service) []networkingv1.HTTPIngr
 
 func (t *ingressTrait) getPathType() *networkingv1.PathType {
 	if t.PathType == nil {
-		return ptr.To(defaultPathTypePrefix)
+		return new(defaultPathTypePrefix)
 	}
 
 	return t.PathType

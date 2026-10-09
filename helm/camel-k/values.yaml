@@ -23,7 +23,7 @@ nameOverride: ""
 fullnameOverride: ""
 
 operator:
-  image: docker.io/apache/camel-k:2.11.0-SNAPSHOT
+  image: docker.io/apache/camel-k:2.12.0-SNAPSHOT
   global: "false"
   resources: {}
   securityContext: {}
@@ -50,7 +50,9 @@ operator:
     annotations:
 
   ## Extra environment variables.
+  ## Deprecated: use env instead
   ## ref: https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/
   extraEnv: []
-    # - name: MY_VAR
-      # value: my_value
+
+  ## Operator environment variables: used to add any platform related configuration.
+  env: []

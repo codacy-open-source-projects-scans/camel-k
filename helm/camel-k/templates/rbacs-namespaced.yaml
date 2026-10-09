@@ -202,12 +202,45 @@ rules:
   resources:
   - roles
   - rolebindings
-  - clusterrolebindings
   verbs:
   - create
   - get
   - list
   - patch
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: camel-k
+  name: {{ include "camel-k.fullname" . }}-operator-arkmq
+rules:
+- apiGroups:
+  - broker.amq.io
+  resources:
+  - activemqartemises
+  - activemqartemisaddresses
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: camel-k
+  name: {{ include "camel-k.fullname" . }}-operator-certmanager
+rules:
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - issuers
+  - clusterissuers
+  verbs:
+  - get
+  - list
   - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -266,6 +299,7 @@ rules:
   - get
   - list
   - patch
+  - watch
 - apiGroups:
   - eventing.knative.dev
   resources:
@@ -461,6 +495,34 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ include "camel-k.fullname" . }}-operator
+subjects:
+- kind: ServiceAccount
+  name: {{ include "camel-k.fullname" . }}-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app: camel-k
+  name: {{ include "camel-k.fullname" . }}-operator-arkmq
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "camel-k.fullname" . }}-operator-arkmq
+subjects:
+- kind: ServiceAccount
+  name: {{ include "camel-k.fullname" . }}-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app: camel-k
+  name: {{ include "camel-k.fullname" . }}-operator-certmanager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "camel-k.fullname" . }}-operator-certmanager
 subjects:
 - kind: ServiceAccount
   name: {{ include "camel-k.fullname" . }}-operator

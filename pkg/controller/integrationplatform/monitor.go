@@ -27,7 +27,6 @@ import (
 	"github.com/apache/camel-k/v2/pkg/util/defaults"
 	"github.com/apache/camel-k/v2/pkg/util/openshift"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // NewMonitorAction returns an action that monitors the integration platform after it's fully initialized.
@@ -66,6 +65,9 @@ func (action *monitorAction) Handle(ctx context.Context, platform *v1.Integratio
 	runtimeSpec := v1.RuntimeSpec{
 		Version:  platform.Status.Build.RuntimeVersion,
 		Provider: platform.Status.Build.RuntimeProvider,
+	}
+	if runtimeSpec.Provider == v1.RuntimeProviderPlainQuarkus {
+		runtimeSpec.Version = defaults.CamelKRuntimeCatalogVersion
 	}
 	catalog, err := loadCatalog(ctx, action.client, platform.Namespace, runtimeSpec)
 	if catalog == nil || err != nil {
@@ -131,13 +133,6 @@ func (action *monitorAction) Handle(ctx context.Context, platform *v1.Integratio
 	action.checkTraitAnnotationsDeprecatedNotice(platform)
 	action.checkMavenSettings(platform)
 	action.checkKameletsCatalogRepoDeprecatedNotice(platform)
-	if err = action.addPlainQuarkusCatalog(ctx, catalog); err != nil {
-		// Only warn the user, we don't want to fail
-		action.L.Infof(
-			"WARN: the operator wasn't able to clone %s catalog. You won't be able to run a plain Quarkus runtime provider.",
-			catalog.Name,
-		)
-	}
 
 	platform.Status.SetCondition(
 		v1.IntegrationPlatformConditionType("IntegrationPlatformDeprecated"),
@@ -217,91 +212,4 @@ func specOrDefault(runtimeVersionSpec string) string {
 	}
 
 	return runtimeVersionSpec
-}
-
-// addPlainQuarkusCatalog is a workaround while a CamelCatalog custom resource is required. The goal is to clone any existing
-// Camel K Runtime catalog and adjust to make it work with plain Quarkus runtime provider.
-func (action *monitorAction) addPlainQuarkusCatalog(ctx context.Context, catalog *v1.CamelCatalog) error {
-	runtimeSpec := v1.RuntimeSpec{
-		Version:  catalog.Spec.GetRuntimeVersion(),
-		Provider: v1.RuntimeProviderPlainQuarkus,
-	}
-	cat, err := loadCatalog(ctx, action.client, catalog.Namespace, runtimeSpec)
-	if err != nil {
-		return err
-	}
-	if cat == nil {
-		// Clone the catalog to enable Quarkus Plain runtime
-		clonedCatalog := catalog.DeepCopy()
-		clonedCatalog.Status = v1.CamelCatalogStatus{}
-		clonedCatalog.ObjectMeta = metav1.ObjectMeta{
-			Namespace:   catalog.Namespace,
-			Name:        strings.ReplaceAll(catalog.Name, "camel-catalog", "camel-catalog-quarkus"),
-			Labels:      catalog.Labels,
-			Annotations: catalog.Annotations,
-		}
-		clonedCatalog.Spec.Runtime.Provider = v1.RuntimeProviderPlainQuarkus
-		clonedCatalog.Spec.Runtime.Dependencies = []v1.MavenArtifact{
-			{
-				GroupID:    "org.apache.camel.quarkus",
-				ArtifactID: "camel-quarkus-core",
-			},
-		}
-		if clonedCatalog.Spec.Runtime.Capabilities != nil {
-			clonedCatalog.Spec.Runtime.Capabilities["cron"] = v1.Capability{
-				Dependencies: []v1.MavenArtifact{},
-			}
-			clonedCatalog.Spec.Runtime.Capabilities["knative"] = v1.Capability{
-				Dependencies: []v1.MavenArtifact{
-					{
-						GroupID:    "org.apache.camel.quarkus",
-						ArtifactID: "camel-quarkus-knative",
-					},
-				},
-			}
-			runtimesProps := clonedCatalog.Spec.Runtime.Capabilities["master"].RuntimeProperties
-			clonedCatalog.Spec.Runtime.Capabilities["master"] = v1.Capability{
-				Dependencies: []v1.MavenArtifact{
-					{
-						GroupID:    "org.apache.camel.quarkus",
-						ArtifactID: "camel-quarkus-master",
-					},
-					{
-						GroupID:    "org.apache.camel.quarkus",
-						ArtifactID: "camel-quarkus-kubernetes",
-					},
-					{
-						GroupID:    "org.apache.camel.quarkus",
-						ArtifactID: "camel-quarkus-kubernetes-cluster-service",
-					},
-				},
-				RuntimeProperties: runtimesProps,
-			}
-			clonedCatalog.Spec.Runtime.Capabilities["resume-kafka"] = v1.Capability{
-				Dependencies: []v1.MavenArtifact{},
-			}
-			clonedCatalog.Spec.Runtime.Capabilities["jolokia"] = v1.Capability{
-				Dependencies: []v1.MavenArtifact{
-					{
-						GroupID:    "org.apache.camel.quarkus",
-						ArtifactID: "camel-quarkus-jaxb",
-					},
-					{
-						GroupID:    "org.apache.camel.quarkus",
-						ArtifactID: "camel-quarkus-management",
-					},
-					{
-						GroupID:    "org.jolokia",
-						ArtifactID: "jolokia-agent-jvm",
-						Classifier: "javaagent",
-						Version:    "2.1.1",
-					},
-				},
-			}
-		}
-
-		return action.client.Create(ctx, clonedCatalog)
-	}
-
-	return nil
 }

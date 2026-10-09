@@ -79,7 +79,9 @@ func NewFakeClient(initObjs ...runtime.Object) (client.Client, error) {
 		return strings.Contains(gvk.Group, "camel")
 	})...)
 	clientset := fakeclientset.NewSimpleClientset(filterObjects(scheme, initObjs, func(gvk schema.GroupVersionKind) bool {
-		return !strings.Contains(gvk.Group, "camel") && !strings.Contains(gvk.Group, "knative")
+		return !strings.Contains(gvk.Group, "camel") && !strings.Contains(gvk.Group, "knative") &&
+			!strings.Contains(gvk.Group, "cert-manager") && !strings.Contains(gvk.Group, "amq.io") &&
+			!strings.Contains(gvk.Group, "strimzi")
 	})...)
 	replicasCount := make(map[string]int32)
 	fakescaleclient := fakescale.FakeScaleClient{}
@@ -95,10 +97,8 @@ func NewFakeClient(initObjs ...runtime.Object) (client.Client, error) {
 		replicasCount[key] = replicas
 
 		return true, &autoscalingv1.Scale{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      obj.Name,
-				Namespace: action.GetNamespace(),
-			},
+			Name:      obj.Name,
+			Namespace: action.GetNamespace(),
 			Spec: autoscalingv1.ScaleSpec{
 				Replicas: replicas,
 			},
@@ -110,10 +110,8 @@ func NewFakeClient(initObjs ...runtime.Object) (client.Client, error) {
 
 		key := fmt.Sprintf("%s:%s:%s/%s", action.GetResource().Group, action.GetResource().Resource, action.GetNamespace(), action.GetName())
 		obj := &autoscalingv1.Scale{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      action.GetName(),
-				Namespace: action.GetNamespace(),
-			},
+			Name:      action.GetName(),
+			Namespace: action.GetNamespace(),
 			Spec: autoscalingv1.ScaleSpec{
 				Replicas: replicasCount[key],
 			},
@@ -129,6 +127,7 @@ func NewFakeClient(initObjs ...runtime.Object) (client.Client, error) {
 		scales:                 &fakescaleclient,
 		enabledKnativeServing:  true,
 		enabledKnativeEventing: true,
+		enabledCertManager:     true,
 	}, nil
 }
 
@@ -155,6 +154,7 @@ type FakeClient struct {
 	enabledOpenshift       bool
 	enabledKnativeServing  bool
 	enabledKnativeEventing bool
+	enabledCertManager     bool
 }
 
 func (c *FakeClient) Intercept(intercept *interceptor.Funcs) {
@@ -214,6 +214,10 @@ func (c *FakeClient) DisableKnativeEventing() {
 	c.enabledKnativeEventing = false
 }
 
+func (c *FakeClient) DisableCertManagerDiscovery() {
+	c.enabledCertManager = false
+}
+
 func (c *FakeClient) AuthorizationV1() authorizationv1.AuthorizationV1Interface {
 	return &FakeAuthorization{
 		AuthorizationV1Interface: c.Interface.AuthorizationV1(),
@@ -222,13 +226,14 @@ func (c *FakeClient) AuthorizationV1() authorizationv1.AuthorizationV1Interface 
 	}
 }
 
-func (c *FakeClient) Discovery() discovery.DiscoveryInterface {
+func (c *FakeClient) Discovery() discovery.DiscoveryInterfaces {
 	return &FakeDiscovery{
-		DiscoveryInterface:     c.Interface.Discovery(),
+		DiscoveryInterfaces:    c.Interface.Discovery(),
 		disabledGroups:         c.disabledGroups,
 		enabledOpenshift:       c.enabledOpenshift,
 		enabledKnativeServing:  c.enabledKnativeServing,
 		enabledKnativeEventing: c.enabledKnativeEventing,
+		enabledCertManager:     c.enabledCertManager,
 	}
 }
 
@@ -265,7 +270,8 @@ type FakeSAR struct {
 // Create fake create implementation (needed in cross namespace Kamelets test). Only allow `cross-ns-sa` user in `default` namespace.
 func (f *FakeSAR) Create(ctx context.Context, sar *authv1.SubjectAccessReview, opts metav1.CreateOptions) (*authv1.SubjectAccessReview, error) {
 	ra := sar.Spec.ResourceAttributes
-	allowed := sar.Spec.User == "system:serviceaccount:default:cross-ns-sa" && ra.Verb == "get" && ra.Resource == "kamelets"
+	allowed := sar.Spec.User == "system:serviceaccount:default:cross-ns-sa" && ra.Verb == "get" &&
+		ra.Resource == "kamelets" && ra.Name != "restricted-kamelet"
 
 	sar.Status.Allowed = allowed
 	sar.Status.Reason = "mocked"
@@ -274,12 +280,13 @@ func (f *FakeSAR) Create(ctx context.Context, sar *authv1.SubjectAccessReview, o
 }
 
 type FakeDiscovery struct {
-	discovery.DiscoveryInterface
+	discovery.DiscoveryInterfaces
 
 	disabledGroups         []string
 	enabledOpenshift       bool
 	enabledKnativeServing  bool
 	enabledKnativeEventing bool
+	enabledCertManager     bool
 }
 
 func (f *FakeDiscovery) ServerResourcesForGroupVersion(groupVersion string) (*metav1.APIResourceList, error) {
@@ -294,6 +301,19 @@ func (f *FakeDiscovery) ServerResourcesForGroupVersion(groupVersion string) (*me
 				Group: "image.openshift.io",
 			}, "")
 		}
+	}
+
+	// used to verify if cert-manager is installed
+	if groupVersion == "cert-manager.io/v1" {
+		if f.enabledCertManager {
+			return &metav1.APIResourceList{
+				GroupVersion: "cert-manager.io/v1",
+			}, nil
+		}
+
+		return nil, k8serrors.NewNotFound(schema.GroupResource{
+			Group: "cert-manager.io",
+		}, "")
 	}
 
 	// used to verify if Knative Serving is installed
@@ -324,5 +344,5 @@ func (f *FakeDiscovery) ServerResourcesForGroupVersion(groupVersion string) (*me
 		}
 	}
 
-	return f.DiscoveryInterface.ServerResourcesForGroupVersion(groupVersion)
+	return f.DiscoveryInterfaces.ServerResourcesForGroupVersion(groupVersion)
 }

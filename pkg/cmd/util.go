@@ -37,28 +37,11 @@ import (
 	"github.com/spf13/viper"
 
 	p "github.com/gertd/go-pluralize"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
 	offlineCommandLabel = "camel.apache.org/cmd.offline"
 )
-
-// DeleteIntegration --.
-func DeleteIntegration(ctx context.Context, c client.Client, name string, namespace string) error {
-	integration := v1.Integration{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       v1.IntegrationKind,
-			APIVersion: v1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
-	}
-
-	return c.Delete(ctx, &integration)
-}
 
 func bindPFlagsHierarchy(cmd *cobra.Command, v *viper.Viper) error {
 	for _, c := range cmd.Commands() {
@@ -223,9 +206,7 @@ func clone(dst any, src any) error {
 func fieldByMapstructureTagName(target reflect.Value, tagName string) (reflect.StructField, bool) {
 	pl := p.NewClient()
 
-	for i := range target.Type().NumField() {
-		f := target.Type().Field(i)
-
+	for f := range target.Type().Fields() {
 		tag, ok := f.Tag.Lookup(MapstructureTagName)
 		if !ok {
 			continue

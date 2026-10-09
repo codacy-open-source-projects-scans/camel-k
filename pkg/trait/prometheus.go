@@ -39,6 +39,9 @@ const (
 type prometheusTrait struct {
 	BaseTrait
 	traitv1.PrometheusTrait `property:",squash"`
+
+	port        int32
+	metricsPath string
 }
 
 func newPrometheusTrait() Trait {
@@ -48,15 +51,35 @@ func newPrometheusTrait() Trait {
 }
 
 func (t *prometheusTrait) Configure(e *Environment) (bool, *TraitCondition, error) {
-	if e.Integration == nil || !ptr.Deref(t.Enabled, false) {
+	if e.Integration == nil ||
+		(!e.IntegrationInPhase(v1.IntegrationPhaseInitialization) && !e.IntegrationInRunningPhases()) ||
+		!ptr.Deref(t.Enabled, false) {
 		return false, nil, nil
 	}
 
-	return e.IntegrationInPhase(v1.IntegrationPhaseInitialization) || e.IntegrationInRunningPhases(), nil, nil
+	condition := NewIntegrationCondition(
+		"Prometheus",
+		v1.IntegrationConditionTraitInfo,
+		corev1.ConditionTrue,
+		TraitConfigurationReason,
+		"Prometheus trait is deprecated in favour of Camel Monitor Operator project",
+	)
+
+	// Default values
+	t.port = defaultObsSvcHealthPort
+	t.metricsPath = "/observe/metrics"
+	// Set values for older runtime
+	isOlderCamelKRuntime := e.CamelCatalog.Runtime.Provider == v1.RuntimeProviderQuarkus
+	if isOlderCamelKRuntime {
+		t.port = defaultQuarkusHealthPort
+		t.metricsPath = "/q/metrics"
+	}
+
+	return e.IntegrationInPhase(v1.IntegrationPhaseInitialization) || e.IntegrationInRunningPhases(), condition, nil
 }
 
 func (t *prometheusTrait) Apply(e *Environment) error {
-	if e.IntegrationInPhase(v1.IntegrationPhaseInitialization) {
+	if e.CamelCatalog.Runtime.Provider == v1.RuntimeProviderQuarkus && e.IntegrationInPhase(v1.IntegrationPhaseInitialization) {
 		util.StringSliceUniqueAdd(&e.Integration.Status.Capabilities, v1.CapabilityPrometheus)
 	}
 
@@ -79,8 +102,8 @@ func (t *prometheusTrait) Apply(e *Environment) error {
 	}
 
 	containerPort := e.getIntegrationContainerPort()
-	if containerPort == nil {
-		containerPort = e.createContainerPort()
+	if containerPort == nil || t.port == defaultObsSvcHealthPort {
+		containerPort = createContainerPort(t.port)
 		container.Ports = append(container.Ports, *containerPort)
 	}
 
@@ -122,15 +145,11 @@ func (t *prometheusTrait) getPodMonitorFor(e *Environment, portName string) (*mo
 	labels[v1.IntegrationLabel] = e.Integration.Name
 
 	podMonitor := monitoringv1.PodMonitor{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "PodMonitor",
-			APIVersion: monitoringv1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      e.Integration.Name,
-			Namespace: e.Integration.Namespace,
-			Labels:    labels,
-		},
+		Kind:       "PodMonitor",
+		APIVersion: monitoringv1.SchemeGroupVersion.String(),
+		Name:       e.Integration.Name,
+		Namespace:  e.Integration.Namespace,
+		Labels:     labels,
 		Spec: monitoringv1.PodMonitorSpec{
 			Selector: metav1.LabelSelector{
 				MatchLabels: map[string]string{
@@ -140,11 +159,20 @@ func (t *prometheusTrait) getPodMonitorFor(e *Environment, portName string) (*mo
 			PodMetricsEndpoints: []monitoringv1.PodMetricsEndpoint{
 				{
 					Port: &portName,
-					Path: "/q/metrics",
+					Path: t.metricsPath,
 				},
 			},
 		},
 	}
 
 	return &podMonitor, nil
+}
+
+// createContainerPort creates a new container port for Prometheus endpoint.
+func createContainerPort(port int32) *corev1.ContainerPort {
+	return &corev1.ContainerPort{
+		Name:          "prometheus",
+		ContainerPort: port,
+		Protocol:      corev1.ProtocolTCP,
+	}
 }

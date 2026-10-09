@@ -20,7 +20,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: integrations.camel.apache.org
 spec:
   group: camel.apache.org
@@ -198,7 +198,10 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               profile:
-                description: the profile needed to run this Integration
+                description: |-
+                  the profile needed to run this Integration
+
+                  Deprecated: may be removed in future releases.
                 type: string
               replicas:
                 default: 1
@@ -278,10 +281,7 @@ spec:
                   type: object
                 type: array
               template:
-                description: |-
-                  Pod template customization.
-
-                  Deprecated: use container, init-containers or owner traits instead
+                description: Pod template customization.
                 properties:
                   spec:
                     description: the specification
@@ -360,7 +360,9 @@ spec:
                                         description: Selects a key of a ConfigMap.
                                         properties:
                                           key:
-                                            description: The key to select.
+                                            description: |-
+                                              The key to select from the ConfigMap's Data field.
+                                              Keys in the BinaryData field are not currently propagated to container env vars.
                                             type: string
                                           name:
                                             default: ""
@@ -635,6 +637,11 @@ spec:
                                             Number must be in the range 1 to 65535.
                                             Name must be an IANA_SVC_NAME.
                                           x-kubernetes-int-or-string: true
+                                        protocol:
+                                          description: |-
+                                            Protocol selects the wire protocol for the probe connection.
+                                            Nil defaults to HTTP/1.1.
+                                          type: string
                                         scheme:
                                           description: |-
                                             Scheme to use for connecting to the host.
@@ -749,6 +756,11 @@ spec:
                                             Number must be in the range 1 to 65535.
                                             Name must be an IANA_SVC_NAME.
                                           x-kubernetes-int-or-string: true
+                                        protocol:
+                                          description: |-
+                                            Protocol selects the wire protocol for the probe connection.
+                                            Nil defaults to HTTP/1.1.
+                                          type: string
                                         scheme:
                                           description: |-
                                             Scheme to use for connecting to the host.
@@ -831,6 +843,13 @@ spec:
                                 grpc:
                                   description: GRPC specifies a GRPC HealthCheckRequest.
                                   properties:
+                                    mode:
+                                      description: |-
+                                        mode specifies the connection mode for the gRPC health probe.
+                                        Set to "TLS" to use TLS without certificate verification.
+                                        Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                        If not specified, the probe uses a plaintext (insecure) connection.
+                                      type: string
                                     port:
                                       description: Port number of the gRPC service.
                                         Number must be in the range 1 to 65535.
@@ -889,6 +908,11 @@ spec:
                                         Number must be in the range 1 to 65535.
                                         Name must be an IANA_SVC_NAME.
                                       x-kubernetes-int-or-string: true
+                                    protocol:
+                                      description: |-
+                                        Protocol selects the wire protocol for the probe connection.
+                                        Nil defaults to HTTP/1.1.
+                                      type: string
                                     scheme:
                                       description: |-
                                         Scheme to use for connecting to the host.
@@ -1046,6 +1070,13 @@ spec:
                                 grpc:
                                   description: GRPC specifies a GRPC HealthCheckRequest.
                                   properties:
+                                    mode:
+                                      description: |-
+                                        mode specifies the connection mode for the gRPC health probe.
+                                        Set to "TLS" to use TLS without certificate verification.
+                                        Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                        If not specified, the probe uses a plaintext (insecure) connection.
+                                      type: string
                                     port:
                                       description: Port number of the gRPC service.
                                         Number must be in the range 1 to 65535.
@@ -1104,6 +1135,11 @@ spec:
                                         Number must be in the range 1 to 65535.
                                         Name must be an IANA_SVC_NAME.
                                       x-kubernetes-int-or-string: true
+                                    protocol:
+                                      description: |-
+                                        Protocol selects the wire protocol for the probe connection.
+                                        Nil defaults to HTTP/1.1.
+                                      type: string
                                     scheme:
                                       description: |-
                                         Scheme to use for connecting to the host.
@@ -1405,7 +1441,6 @@ spec:
                                     procMount denotes the type of proc mount to use for the containers.
                                     The default value is Default which uses the container runtime defaults for
                                     readonly paths and masked paths.
-                                    This requires the ProcMountType feature flag to be enabled.
                                     Note that this field cannot be set when spec.os.name is windows.
                                   type: string
                                 readOnlyRootFilesystem:
@@ -1560,6 +1595,13 @@ spec:
                                 grpc:
                                   description: GRPC specifies a GRPC HealthCheckRequest.
                                   properties:
+                                    mode:
+                                      description: |-
+                                        mode specifies the connection mode for the gRPC health probe.
+                                        Set to "TLS" to use TLS without certificate verification.
+                                        Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                        If not specified, the probe uses a plaintext (insecure) connection.
+                                      type: string
                                     port:
                                       description: Port number of the gRPC service.
                                         Number must be in the range 1 to 65535.
@@ -1618,6 +1660,11 @@ spec:
                                         Number must be in the range 1 to 65535.
                                         Name must be an IANA_SVC_NAME.
                                       x-kubernetes-int-or-string: true
+                                    protocol:
+                                      description: |-
+                                        Protocol selects the wire protocol for the probe connection.
+                                        Nil defaults to HTTP/1.1.
+                                      type: string
                                     scheme:
                                       description: |-
                                         Scheme to use for connecting to the host.
@@ -1759,10 +1806,21 @@ spec:
                                 description: VolumeMount describes a mounting of a
                                   Volume within a container.
                                 properties:
-                                  mountPath:
+                                  bindMountOptions:
                                     description: |-
-                                      Path within the container at which the volume should be mounted.  Must
-                                      not contain ':'.
+                                      bindMountOptions is the list of additional bind mount options to apply when
+                                      mounting this volume into the container. Allowed values are noexec,
+                                      nodev, and nosuid. These are Linux mount options and have no effect on
+                                      Windows nodes.
+                                      This field is not supported with image volumes.
+                                      This is an alpha field and requires enabling the VolumeBindMountOptions feature gate.
+                                    items:
+                                      type: string
+                                    type: array
+                                    x-kubernetes-list-type: set
+                                  mountPath:
+                                    description: Path within the container at which
+                                      the volume should be mounted.
                                     type: string
                                   mountPropagation:
                                     description: |-
@@ -1834,6 +1892,12 @@ spec:
                       dnsPolicy:
                         description: DNSPolicy
                         type: string
+                      enableServiceLinks:
+                        description: EnableServiceLinks indicates whether information
+                          about services should be injected into the Pod's environment
+                          variables, matching the syntax of Docker links. Defaults
+                          to true.
+                        type: boolean
                       ephemeralContainers:
                         description: EphemeralContainers
                         items:
@@ -1908,7 +1972,9 @@ spec:
                                         description: Selects a key of a ConfigMap.
                                         properties:
                                           key:
-                                            description: The key to select.
+                                            description: |-
+                                              The key to select from the ConfigMap's Data field.
+                                              Keys in the BinaryData field are not currently propagated to container env vars.
                                             type: string
                                           name:
                                             default: ""
@@ -2180,6 +2246,11 @@ spec:
                                             Number must be in the range 1 to 65535.
                                             Name must be an IANA_SVC_NAME.
                                           x-kubernetes-int-or-string: true
+                                        protocol:
+                                          description: |-
+                                            Protocol selects the wire protocol for the probe connection.
+                                            Nil defaults to HTTP/1.1.
+                                          type: string
                                         scheme:
                                           description: |-
                                             Scheme to use for connecting to the host.
@@ -2294,6 +2365,11 @@ spec:
                                             Number must be in the range 1 to 65535.
                                             Name must be an IANA_SVC_NAME.
                                           x-kubernetes-int-or-string: true
+                                        protocol:
+                                          description: |-
+                                            Protocol selects the wire protocol for the probe connection.
+                                            Nil defaults to HTTP/1.1.
+                                          type: string
                                         scheme:
                                           description: |-
                                             Scheme to use for connecting to the host.
@@ -2372,6 +2448,13 @@ spec:
                                 grpc:
                                   description: GRPC specifies a GRPC HealthCheckRequest.
                                   properties:
+                                    mode:
+                                      description: |-
+                                        mode specifies the connection mode for the gRPC health probe.
+                                        Set to "TLS" to use TLS without certificate verification.
+                                        Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                        If not specified, the probe uses a plaintext (insecure) connection.
+                                      type: string
                                     port:
                                       description: Port number of the gRPC service.
                                         Number must be in the range 1 to 65535.
@@ -2430,6 +2513,11 @@ spec:
                                         Number must be in the range 1 to 65535.
                                         Name must be an IANA_SVC_NAME.
                                       x-kubernetes-int-or-string: true
+                                    protocol:
+                                      description: |-
+                                        Protocol selects the wire protocol for the probe connection.
+                                        Nil defaults to HTTP/1.1.
+                                      type: string
                                     scheme:
                                       description: |-
                                         Scheme to use for connecting to the host.
@@ -2575,6 +2663,13 @@ spec:
                                 grpc:
                                   description: GRPC specifies a GRPC HealthCheckRequest.
                                   properties:
+                                    mode:
+                                      description: |-
+                                        mode specifies the connection mode for the gRPC health probe.
+                                        Set to "TLS" to use TLS without certificate verification.
+                                        Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                        If not specified, the probe uses a plaintext (insecure) connection.
+                                      type: string
                                     port:
                                       description: Port number of the gRPC service.
                                         Number must be in the range 1 to 65535.
@@ -2633,6 +2728,11 @@ spec:
                                         Number must be in the range 1 to 65535.
                                         Name must be an IANA_SVC_NAME.
                                       x-kubernetes-int-or-string: true
+                                    protocol:
+                                      description: |-
+                                        Protocol selects the wire protocol for the probe connection.
+                                        Nil defaults to HTTP/1.1.
+                                      type: string
                                     scheme:
                                       description: |-
                                         Scheme to use for connecting to the host.
@@ -2910,7 +3010,6 @@ spec:
                                     procMount denotes the type of proc mount to use for the containers.
                                     The default value is Default which uses the container runtime defaults for
                                     readonly paths and masked paths.
-                                    This requires the ProcMountType feature flag to be enabled.
                                     Note that this field cannot be set when spec.os.name is windows.
                                   type: string
                                 readOnlyRootFilesystem:
@@ -3058,6 +3157,13 @@ spec:
                                 grpc:
                                   description: GRPC specifies a GRPC HealthCheckRequest.
                                   properties:
+                                    mode:
+                                      description: |-
+                                        mode specifies the connection mode for the gRPC health probe.
+                                        Set to "TLS" to use TLS without certificate verification.
+                                        Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                        If not specified, the probe uses a plaintext (insecure) connection.
+                                      type: string
                                     port:
                                       description: Port number of the gRPC service.
                                         Number must be in the range 1 to 65535.
@@ -3116,6 +3222,11 @@ spec:
                                         Number must be in the range 1 to 65535.
                                         Name must be an IANA_SVC_NAME.
                                       x-kubernetes-int-or-string: true
+                                    protocol:
+                                      description: |-
+                                        Protocol selects the wire protocol for the probe connection.
+                                        Nil defaults to HTTP/1.1.
+                                      type: string
                                     scheme:
                                       description: |-
                                         Scheme to use for connecting to the host.
@@ -3266,10 +3377,21 @@ spec:
                                 description: VolumeMount describes a mounting of a
                                   Volume within a container.
                                 properties:
-                                  mountPath:
+                                  bindMountOptions:
                                     description: |-
-                                      Path within the container at which the volume should be mounted.  Must
-                                      not contain ':'.
+                                      bindMountOptions is the list of additional bind mount options to apply when
+                                      mounting this volume into the container. Allowed values are noexec,
+                                      nodev, and nosuid. These are Linux mount options and have no effect on
+                                      Windows nodes.
+                                      This field is not supported with image volumes.
+                                      This is an alpha field and requires enabling the VolumeBindMountOptions feature gate.
+                                    items:
+                                      type: string
+                                    type: array
+                                    x-kubernetes-list-type: set
+                                  mountPath:
+                                    description: Path within the container at which
+                                      the volume should be mounted.
                                     type: string
                                   mountPropagation:
                                     description: |-
@@ -3405,7 +3527,9 @@ spec:
                                         description: Selects a key of a ConfigMap.
                                         properties:
                                           key:
-                                            description: The key to select.
+                                            description: |-
+                                              The key to select from the ConfigMap's Data field.
+                                              Keys in the BinaryData field are not currently propagated to container env vars.
                                             type: string
                                           name:
                                             default: ""
@@ -3680,6 +3804,11 @@ spec:
                                             Number must be in the range 1 to 65535.
                                             Name must be an IANA_SVC_NAME.
                                           x-kubernetes-int-or-string: true
+                                        protocol:
+                                          description: |-
+                                            Protocol selects the wire protocol for the probe connection.
+                                            Nil defaults to HTTP/1.1.
+                                          type: string
                                         scheme:
                                           description: |-
                                             Scheme to use for connecting to the host.
@@ -3794,6 +3923,11 @@ spec:
                                             Number must be in the range 1 to 65535.
                                             Name must be an IANA_SVC_NAME.
                                           x-kubernetes-int-or-string: true
+                                        protocol:
+                                          description: |-
+                                            Protocol selects the wire protocol for the probe connection.
+                                            Nil defaults to HTTP/1.1.
+                                          type: string
                                         scheme:
                                           description: |-
                                             Scheme to use for connecting to the host.
@@ -3876,6 +4010,13 @@ spec:
                                 grpc:
                                   description: GRPC specifies a GRPC HealthCheckRequest.
                                   properties:
+                                    mode:
+                                      description: |-
+                                        mode specifies the connection mode for the gRPC health probe.
+                                        Set to "TLS" to use TLS without certificate verification.
+                                        Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                        If not specified, the probe uses a plaintext (insecure) connection.
+                                      type: string
                                     port:
                                       description: Port number of the gRPC service.
                                         Number must be in the range 1 to 65535.
@@ -3934,6 +4075,11 @@ spec:
                                         Number must be in the range 1 to 65535.
                                         Name must be an IANA_SVC_NAME.
                                       x-kubernetes-int-or-string: true
+                                    protocol:
+                                      description: |-
+                                        Protocol selects the wire protocol for the probe connection.
+                                        Nil defaults to HTTP/1.1.
+                                      type: string
                                     scheme:
                                       description: |-
                                         Scheme to use for connecting to the host.
@@ -4091,6 +4237,13 @@ spec:
                                 grpc:
                                   description: GRPC specifies a GRPC HealthCheckRequest.
                                   properties:
+                                    mode:
+                                      description: |-
+                                        mode specifies the connection mode for the gRPC health probe.
+                                        Set to "TLS" to use TLS without certificate verification.
+                                        Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                        If not specified, the probe uses a plaintext (insecure) connection.
+                                      type: string
                                     port:
                                       description: Port number of the gRPC service.
                                         Number must be in the range 1 to 65535.
@@ -4149,6 +4302,11 @@ spec:
                                         Number must be in the range 1 to 65535.
                                         Name must be an IANA_SVC_NAME.
                                       x-kubernetes-int-or-string: true
+                                    protocol:
+                                      description: |-
+                                        Protocol selects the wire protocol for the probe connection.
+                                        Nil defaults to HTTP/1.1.
+                                      type: string
                                     scheme:
                                       description: |-
                                         Scheme to use for connecting to the host.
@@ -4450,7 +4608,6 @@ spec:
                                     procMount denotes the type of proc mount to use for the containers.
                                     The default value is Default which uses the container runtime defaults for
                                     readonly paths and masked paths.
-                                    This requires the ProcMountType feature flag to be enabled.
                                     Note that this field cannot be set when spec.os.name is windows.
                                   type: string
                                 readOnlyRootFilesystem:
@@ -4605,6 +4762,13 @@ spec:
                                 grpc:
                                   description: GRPC specifies a GRPC HealthCheckRequest.
                                   properties:
+                                    mode:
+                                      description: |-
+                                        mode specifies the connection mode for the gRPC health probe.
+                                        Set to "TLS" to use TLS without certificate verification.
+                                        Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                        If not specified, the probe uses a plaintext (insecure) connection.
+                                      type: string
                                     port:
                                       description: Port number of the gRPC service.
                                         Number must be in the range 1 to 65535.
@@ -4663,6 +4827,11 @@ spec:
                                         Number must be in the range 1 to 65535.
                                         Name must be an IANA_SVC_NAME.
                                       x-kubernetes-int-or-string: true
+                                    protocol:
+                                      description: |-
+                                        Protocol selects the wire protocol for the probe connection.
+                                        Nil defaults to HTTP/1.1.
+                                      type: string
                                     scheme:
                                       description: |-
                                         Scheme to use for connecting to the host.
@@ -4804,10 +4973,21 @@ spec:
                                 description: VolumeMount describes a mounting of a
                                   Volume within a container.
                                 properties:
-                                  mountPath:
+                                  bindMountOptions:
                                     description: |-
-                                      Path within the container at which the volume should be mounted.  Must
-                                      not contain ':'.
+                                      bindMountOptions is the list of additional bind mount options to apply when
+                                      mounting this volume into the container. Allowed values are noexec,
+                                      nodev, and nosuid. These are Linux mount options and have no effect on
+                                      Windows nodes.
+                                      This field is not supported with image volumes.
+                                      This is an alpha field and requires enabling the VolumeBindMountOptions feature gate.
+                                    items:
+                                      type: string
+                                    type: array
+                                    x-kubernetes-list-type: set
+                                  mountPath:
+                                    description: Path within the container at which
+                                      the volume should be mounted.
                                     type: string
                                   mountPropagation:
                                     description: |-
@@ -4978,11 +5158,8 @@ spec:
                               Eligible volumes are in-tree FibreChannel and iSCSI volumes, and all CSI volumes
                               whose CSI driver announces SELinux support by setting spec.seLinuxMount: true in their
                               CSIDriver instance. Other volumes are always re-labelled recursively.
-                              "MountOption" value is allowed only when SELinuxMount feature gate is enabled.
 
-                              If not specified and SELinuxMount feature gate is enabled, "MountOption" is used.
-                              If not specified and SELinuxMount feature gate is disabled, "MountOption" is used for ReadWriteOncePod volumes
-                              and "Recursive" for all other volumes.
+                              If not specified, "MountOption" is used.
 
                               This field affects only Pods that have SELinux label set, either in PodSecurityContext or in SecurityContext of all containers.
 
@@ -5513,6 +5690,13 @@ spec:
                                     mode, like fsGroup, and the result can be other mode bits set.
                                   format: int32
                                   type: integer
+                                defaultUser:
+                                  description: |-
+                                    defaultUser is Optional: The owner UID of the created files by default.
+                                    The defaultUser field is only used as a fallback when the item-level user field is unset.
+                                    (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                  format: int64
+                                  type: integer
                                 items:
                                   description: |-
                                     items if unspecified, each key-value pair in the Data field of the referenced
@@ -5546,6 +5730,13 @@ spec:
                                           May not contain the path element '..'.
                                           May not start with the string '..'.
                                         type: string
+                                      user:
+                                        description: |-
+                                          user is Optional: The owner UID of the created file.
+                                          If specified, the item-level user field takes precedence over defaultUser.
+                                          (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                        format: int64
+                                        type: integer
                                     required:
                                     - key
                                     - path
@@ -5633,6 +5824,13 @@ spec:
                                     mode, like fsGroup, and the result can be other mode bits set.
                                   format: int32
                                   type: integer
+                                defaultUser:
+                                  description: |-
+                                    defaultUser is Optional: The owner UID of the created files by default.
+                                    The defaultUser field is only used as a fallback when the item-level user field is unset.
+                                    (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                  format: int64
+                                  type: integer
                                 items:
                                   description: Items is a list of downward API volume
                                     file
@@ -5701,6 +5899,13 @@ spec:
                                         - resource
                                         type: object
                                         x-kubernetes-map-type: atomic
+                                      user:
+                                        description: |-
+                                          user is Optional: The owner UID of the created file.
+                                          If specified, the item-level user field takes precedence over defaultUser.
+                                          (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                        format: int64
+                                        type: integer
                                     required:
                                     - path
                                     type: object
@@ -5719,6 +5924,18 @@ spec:
                                     Must be an empty string (default) or Memory.
                                     More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
                                   type: string
+                                mode:
+                                  description: |-
+                                    mode specifies the permission bits for the emptyDir directory, in numeric
+                                    notation (e.g., 0755, 01777). Must be a value between 0000 and 01777.
+                                    If not specified, defaults to 0777.
+                                    This might be in conflict with other options that affect the file
+                                    mode, like fsGroup. If fsGroup is specified, the fsGroup permissions
+                                    will override the mode specified here.
+                                    This field has no effect on Windows.
+                                    This field is alpha and requires EmptyDirVolumeMode featuregate to be enabled.
+                                  format: int32
+                                  type: integer
                                 sizeLimit:
                                   anyOf:
                                   - type: integer
@@ -5812,8 +6029,8 @@ spec:
                                             * An existing PVC (PersistentVolumeClaim)
                                             If the provisioner or an external controller can support the specified data source,
                                             it will create a new volume based on the contents of the specified data source.
-                                            When the AnyVolumeDataSource feature gate is enabled, dataSource contents will be copied to dataSourceRef,
-                                            and dataSourceRef contents will be copied to dataSource when dataSourceRef.namespace is not specified.
+                                            dataSource contents will be copied to dataSourceRef, and dataSourceRef contents will be
+                                            copied to dataSource when dataSourceRef.namespace is not specified.
                                             If the namespace is specified, then dataSourceRef will not be copied to dataSource.
                                           properties:
                                             apiGroup:
@@ -5858,7 +6075,6 @@ spec:
                                               specified.
                                             * While dataSource only allows local objects, dataSourceRef allows objects
                                               in any namespaces.
-                                            (Beta) Using this field requires the AnyVolumeDataSource feature gate to be enabled.
                                             (Alpha) Using the namespace field of dataSourceRef requires the CrossNamespaceVolumeDataSource feature gate to be enabled.
                                           properties:
                                             apiGroup:
@@ -6221,7 +6437,7 @@ spec:
                                 A failure to resolve or pull the image during pod startup will block containers from starting and may add significant latency. Failures will be retried using normal volume backoff and will be reported on the pod reason and message.
                                 The types of objects that may be mounted by this volume are defined by the container runtime implementation on a host machine and at minimum must include all valid types supported by the container image field.
                                 The OCI object gets mounted in a single directory (spec.containers[*].volumeMounts.mountPath) by merging the manifest layers in the same way as for container images.
-                                The volume will be mounted read-only (ro) and non-executable files (noexec).
+                                The volume will be mounted read-only (ro).
                                 Sub path mounts for containers are not supported (spec.containers[*].volumeMounts.subpath) before 1.33.
                                 The field spec.securityContext.fsGroupChangePolicy has no effect on this volume type.
                               properties:
@@ -6393,8 +6609,7 @@ spec:
                               description: |-
                                 portworxVolume represents a portworx volume attached and mounted on kubelets host machine.
                                 Deprecated: PortworxVolume is deprecated. All operations for the in-tree portworxVolume type
-                                are redirected to the pxd.portworx.com CSI driver when the CSIMigrationPortworx feature-gate
-                                is on.
+                                are redirected to the pxd.portworx.com CSI driver.
                               properties:
                                 fsType:
                                   description: |-
@@ -6427,6 +6642,13 @@ spec:
                                     This might be in conflict with other options that affect the file
                                     mode, like fsGroup, and the result can be other mode bits set.
                                   format: int32
+                                  type: integer
+                                defaultUser:
+                                  description: |-
+                                    defaultUser is Optional: The owner UID of the created files by default.
+                                    The defaultUser field is only used as a fallback when the item-level user field is unset.
+                                    (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                  format: int64
                                   type: integer
                                 sources:
                                   description: |-
@@ -6528,6 +6750,13 @@ spec:
                                               Mutually-exclusive with name.  The contents of all selected
                                               ClusterTrustBundles will be unified and deduplicated.
                                             type: string
+                                          user:
+                                            description: |-
+                                              user is Optional: The owner UID of the created file.
+                                              If specified, the item-level user field takes precedence over defaultUser.
+                                              (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                            format: int64
+                                            type: integer
                                         required:
                                         - path
                                         type: object
@@ -6568,6 +6797,13 @@ spec:
                                                     May not contain the path element '..'.
                                                     May not start with the string '..'.
                                                   type: string
+                                                user:
+                                                  description: |-
+                                                    user is Optional: The owner UID of the created file.
+                                                    If specified, the item-level user field takes precedence over defaultUser.
+                                                    (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                  format: int64
+                                                  type: integer
                                               required:
                                               - key
                                               - path
@@ -6667,6 +6903,13 @@ spec:
                                                   - resource
                                                   type: object
                                                   x-kubernetes-map-type: atomic
+                                                user:
+                                                  description: |-
+                                                    user is Optional: The owner UID of the created file.
+                                                    If specified, the item-level user field takes precedence over defaultUser.
+                                                    (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                  format: int64
+                                                  type: integer
                                               required:
                                               - path
                                               type: object
@@ -6774,6 +7017,13 @@ spec:
                                             description: Kubelet's generated CSRs
                                               will be addressed to this signer.
                                             type: string
+                                          user:
+                                            description: |-
+                                              user is Optional: The owner UID of the created file.
+                                              If specified, the item-level user field takes precedence over defaultUser.
+                                              (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                            format: int64
+                                            type: integer
                                           userAnnotations:
                                             additionalProperties:
                                               type: string
@@ -6833,6 +7083,13 @@ spec:
                                                     May not contain the path element '..'.
                                                     May not start with the string '..'.
                                                   type: string
+                                                user:
+                                                  description: |-
+                                                    user is Optional: The owner UID of the created file.
+                                                    If specified, the item-level user field takes precedence over defaultUser.
+                                                    (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                  format: int64
+                                                  type: integer
                                               required:
                                               - key
                                               - path
@@ -6880,6 +7137,13 @@ spec:
                                               path is the path relative to the mount point of the file to project the
                                               token into.
                                             type: string
+                                          user:
+                                            description: |-
+                                              user is Optional: The owner UID of the created file.
+                                              If specified, the item-level user field takes precedence over defaultUser.
+                                              (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                            format: int64
+                                            type: integer
                                         required:
                                         - path
                                         type: object
@@ -7086,6 +7350,13 @@ spec:
                                     mode, like fsGroup, and the result can be other mode bits set.
                                   format: int32
                                   type: integer
+                                defaultUser:
+                                  description: |-
+                                    defaultUser is Optional: The owner UID of the created files by default.
+                                    The defaultUser field is only used as a fallback when the item-level user field is unset.
+                                    (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                  format: int64
+                                  type: integer
                                 items:
                                   description: |-
                                     items If unspecified, each key-value pair in the Data field of the referenced
@@ -7119,6 +7390,13 @@ spec:
                                           May not contain the path element '..'.
                                           May not start with the string '..'.
                                         type: string
+                                      user:
+                                        description: |-
+                                          user is Optional: The owner UID of the created file.
+                                          If specified, the item-level user field takes precedence over defaultUser.
+                                          (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                        format: int64
+                                        type: integer
                                     required:
                                     - key
                                     - path
@@ -7324,11 +7602,7 @@ spec:
                           Deprecated: use TasksRequestCPU instead with task name `builder`.
                         type: string
                       mavenProfiles:
-                        description: |-
-                          A list of references pointing to configmaps/secrets that contains a maven profile.
-                          This configmap/secret is a resource of the IntegrationKit created, therefore it needs to be present in the namespace where the operator is going to create the IntegrationKit.
-                          The content of the maven profile is expected to be a text containing a valid maven profile starting with `<profile>` and ending with `</profile>` that will be integrated as an inline profile in the POM.
-                          Syntax: [configmap|secret]:name[/key], where name represents the resource name, key optionally represents the resource key to be filtered (default key value = profile.xml).
+                        description: 'Deprecated: no longer in use.'
                         items:
                           type: string
                         type: array
@@ -7378,8 +7652,10 @@ spec:
                         - routine
                         type: string
                       tasks:
-                        description: A list of tasks to be executed (available only
-                          when using `pod` strategy) with format `<name>;<container-image>;<container-command>`.
+                        description: |-
+                          A list of tasks to be executed (available only when using `pod` strategy) with format `<name>;<container-image>;<container-command>`.
+
+                          Deprecated: may be removed in future versions.
                         items:
                           type: string
                         type: array
@@ -7387,7 +7663,10 @@ spec:
                         description: |-
                           A list of tasks sorted by the order of execution in a csv format, ie, `<taskName1>,<taskName2>,...`.
                           Mind that you must include also the operator tasks (`builder`, `quarkus-native`, `package`, `jib`, `s2i`)
-                          if you need to execute them. Useful only with `pod` strategy.
+                          if you need to execute them. Useful only with `pod` strategy. Disabled by default, you need to enable via
+                          BUILDER_TASKS_ENABLED=true environment variable on operator Deployment.
+
+                          Deprecated: may be removed in future versions.
                         type: string
                       tasksLimitCPU:
                         description: A list of limit cpu configuration for the specific
@@ -7441,7 +7720,7 @@ spec:
                         type: array
                       runtimeProvider:
                         description: The runtime provider to use for the integration.
-                          (Default, Camel K Runtime).
+                          (Default, plain Quarkus).
                         enum:
                         - quarkus
                         - plain-quarkus
@@ -7452,6 +7731,10 @@ spec:
                           You can use a fixed version (for example "3.2.3") or a semantic version (for example "3.x") which will try to resolve
                           to the best matching Catalog existing on the cluster (Default, the one provided by the operator version).
                         type: string
+                      skipObservabilityServices:
+                        description: Whether to skip the default Camel Observability
+                          Services dependency
+                        type: boolean
                     type: object
                   container:
                     description: The configuration of Container trait
@@ -7493,8 +7776,8 @@ spec:
                         type: boolean
                       image:
                         description: |-
-                          The main container image to use for the Integration. When using this parameter the operator will create a synthetic IntegrationKit which
-                          won't be able to execute traits requiring CamelCatalog. If the container image you're using is coming from an IntegrationKit, use instead
+                          The main container image to use for the Integration. When using this parameter, any trait requiring a
+                          CamelCatalog won't be able to execute. If the container image you're using is coming from an IntegrationKit, use instead
                           Integration `.spec.integrationKit` parameter. If you're moving the Integration across environments, you will also need to create an "external" IntegrationKit.
                         type: string
                       imagePullPolicy:
@@ -7892,6 +8175,11 @@ spec:
                         description: the URL of the repository where the project is
                           stored.
                         type: string
+                      username:
+                        description: |-
+                          the username used to authenticate against the Git server, together with the token stored in `secret` (default `camel-k`).
+                          Some Git servers validate it, for example Bitbucket Cloud access tokens require `x-token-auth`.
+                        type: string
                     type: object
                   health:
                     description: The configuration of Health trait
@@ -7927,7 +8215,7 @@ spec:
                         type: integer
                       livenessProbe:
                         description: The liveness probe path to use (default provided
-                          by the Catalog runtime used).
+                          by the dependency used).
                         type: string
                       livenessProbeEnabled:
                         description: Configures the liveness probe for the integration
@@ -7967,7 +8255,7 @@ spec:
                         type: integer
                       readinessProbe:
                         description: The readiness probe path to use (default provided
-                          by the Catalog runtime used).
+                          by the dependency used).
                         type: string
                       readinessProbeEnabled:
                         description: Configures the readiness probe for the integration
@@ -7989,7 +8277,8 @@ spec:
                         type: integer
                       startupFailureThreshold:
                         description: Minimum consecutive failures for the startup
-                          probe to be considered failed after having succeeded.
+                          probe to be considered failed after having succeeded (default
+                          10 if not specified).
                         format: int32
                         type: integer
                       startupInitialDelay:
@@ -8007,7 +8296,7 @@ spec:
                         type: integer
                       startupProbe:
                         description: The startup probe path to use (default provided
-                          by the Catalog runtime used).
+                          by the dependency used).
                         type: string
                       startupProbeEnabled:
                         description: Configures the startup probe for the integration
@@ -8083,11 +8372,28 @@ spec:
                         items:
                           type: string
                         type: array
+                      tlsCertManagerAuto:
+                        description: |-
+                          To automatically discover and configure a cert-manager Issuer or ClusterIssuer
+                          for TLS certificate issuance, in place of manually providing a secret.
+                        type: boolean
                       tlsHosts:
                         description: To configure tls hosts
                         items:
                           type: string
                         type: array
+                      tlsIssuerKind:
+                        description: |-
+                          The kind of the cert-manager issuer to use: `Issuer` (namespaced) or
+                          `ClusterIssuer` (cluster-scoped). Defaults to `ClusterIssuer` when
+                          tlsIssuerName is set without a kind.
+                        type: string
+                      tlsIssuerName:
+                        description: |-
+                          The name of the cert-manager Issuer or ClusterIssuer to use for automatic
+                          TLS certificate issuance. If set, cert-manager availability and the issuer's
+                          existence are verified, bypassing auto-discovery.
+                        type: string
                       tlsSecretName:
                         description: To configure tls secret name
                         type: string
@@ -8107,14 +8413,20 @@ spec:
                           traits share this common property.
                         type: boolean
                       initTasks:
-                        description: A list of init tasks to be executed with format
-                          `<name>;<container-image>;<container-command>`.
+                        description: |-
+                          A list of init tasks to be executed.
+                          Each task accepts the format `<name>;<container-image>;<container-command>` or key=value format
+                          `name=<name>;image=<image>;command=<command>;request-cpu=<quantity>;limit-cpu=<quantity>;request-memory=<quantity>;limit-memory=<quantity>`.
+                          Resource keys (request-cpu, limit-cpu, request-memory, limit-memory) are optional and accept Kubernetes resource quantities.
                         items:
                           type: string
                         type: array
                       sideCarTasks:
-                        description: A list of sidecar tasks to be executed with format
-                          `<name>;<container-image>;<container-command>`.
+                        description: |-
+                          A list of sidecar tasks to be executed.
+                          Each task accepts the format `<name>;<container-image>;<container-command>` or key=value format
+                          `name=<name>;image=<image>;command=<command>;request-cpu=<quantity>;limit-cpu=<quantity>;request-memory=<quantity>;limit-memory=<quantity>`.
+                          Resource keys (request-cpu, limit-cpu, request-memory, limit-memory) are optional and accept Kubernetes resource quantities.
                         items:
                           type: string
                         type: array
@@ -8148,7 +8460,7 @@ spec:
                     description: |-
                       The configuration of Jolokia trait.
 
-                      Deprecated: use jvm.agent instead.
+                      Deprecated: no longer in use.
                     properties:
                       CACert:
                         description: |-
@@ -8399,6 +8711,15 @@ spec:
                               description: The trigger metadata (see Keda documentation
                                 to learn how to fill for each type).
                               type: object
+                            metricType:
+                              description: |-
+                                The metric type for this trigger, mapping to KEDA's trigger-level `metricType`
+                                (`Utilization`, `AverageValue` or `Value`).
+                              enum:
+                              - Utilization
+                              - AverageValue
+                              - Value
+                              type: string
                             secrets:
                               description: The secrets mapping to use. Keda allows
                                 the possibility to use values coming from different
@@ -8606,7 +8927,10 @@ spec:
                         type: string
                     type: object
                   logging:
-                    description: The configuration of Logging trait
+                    description: |-
+                      The configuration of Logging trait.
+
+                      Deprecated: no longer in use.
                     properties:
                       color:
                         description: Colorize the log output
@@ -8642,7 +8966,10 @@ spec:
                         type: string
                     type: object
                   master:
-                    description: The configuration of Master trait
+                    description: |-
+                      The configuration of Master trait.
+
+                      Deprecated: no longer in use.
                     properties:
                       auto:
                         description: Enables automatic configuration of the trait.
@@ -8777,12 +9104,14 @@ spec:
                           traits share this common property.
                         type: boolean
                       targetAnnotations:
-                        description: The set of annotations to be transferred
+                        description: The set of annotations to be transferred. Use
+                          "*" to transfer all annotations.
                         items:
                           type: string
                         type: array
                       targetLabels:
-                        description: The set of labels to be transferred
+                        description: The set of labels to be transferred. Use "*"
+                          to transfer all labels.
                         items:
                           type: string
                         type: array
@@ -8838,10 +9167,7 @@ spec:
                         type: boolean
                     type: object
                   pod:
-                    description: |-
-                      The configuration of Pod trait.
-
-                      Deprecated: use init-containers instead.
+                    description: The configuration of Pod trait.
                     properties:
                       configuration:
                         description: |-
@@ -8851,8 +9177,7 @@ spec:
                         type: object
                         x-kubernetes-preserve-unknown-fields: true
                       enabled:
-                        description: Can be used to enable or disable a trait. All
-                          traits share this common property.
+                        description: 'Deprecated: no longer in use.'
                         type: boolean
                     type: object
                   prometheus:
@@ -8899,15 +9224,14 @@ spec:
                           traits share this common property.
                         type: boolean
                       imagePullerDelegation:
-                        description: When using a global operator with a shared platform,
-                          this enables delegation of the `system:image-puller` cluster
-                          role on the operator namespace to the integration service
-                          account.
+                        description: |-
+                          When using a global operator with a shared platform, this enables delegation of the `system:image-puller`
+                          cluster role on the operator namespace to the integration service account.
+
+                          Deprecated: may be removed in future releases.
                         type: boolean
                       secretName:
-                        description: The pull secret name to set on the Pod. If left
-                          empty this is automatically taken from the `IntegrationPlatform`
-                          registry configuration.
+                        description: The pull secret name to set on the Pod.
                         type: string
                     type: object
                   quarkus:
@@ -8969,7 +9293,7 @@ spec:
                     description: |-
                       The configuration of Registry trait (support removed since version 2.5.0).
 
-                      Deprecated: use jvm trait or read documentation.
+                      Deprecated: no longer in use.
                     properties:
                       configuration:
                         description: |-
@@ -9100,11 +9424,11 @@ spec:
                         type: boolean
                       runAsNonRoot:
                         description: Security Context RunAsNonRoot configuration (default
-                          false).
+                          true).
                         type: boolean
                       runAsUser:
                         description: 'Security Context RunAsUser configuration (default
-                          none): this value is automatically retrieved in Openshift
+                          user 1000): this value is automatically retrieved in Openshift
                           clusters when not explicitly set.'
                         format: int64
                         type: integer
@@ -9203,7 +9527,10 @@ spec:
                     - configuration
                     type: object
                   telemetry:
-                    description: The configuration of Telemetry trait
+                    description: |-
+                      The configuration of Telemetry trait.
+
+                      Deprecated: no longer in use.
                     properties:
                       auto:
                         description: Enables automatic configuration of the trait,
@@ -9314,9 +9641,12 @@ spec:
                         the transition.
                       type: string
                     pods:
-                      description: Pods collect health and conditions information
-                        from the owned PODs
+                      description: |-
+                        DeprecatedPods collect health and conditions information from the owned PODs
+
+                        Deprecated: may be removed in future releases.
                       items:
+                        description: 'Deprecated: may be removed in future releases.'
                         properties:
                           condition:
                             description: PodCondition contains details for the current
@@ -9336,9 +9666,8 @@ spec:
                                   about last transition.
                                 type: string
                               observedGeneration:
-                                description: |-
-                                  If set, this represents the .metadata.generation that the pod condition was set based upon.
-                                  The PodObservedGenerationTracking feature gate must be enabled to use this field.
+                                description: If set, this represents the .metadata.generation
+                                  that the pod condition was set based upon.
                                 format: int64
                                 type: integer
                               reason:
@@ -9566,7 +9895,10 @@ spec:
                 description: The IntegrationPlatform watching this Integration
                 type: string
               profile:
-                description: the profile needed to run this Integration
+                description: |-
+                  the profile needed to run this Integration
+
+                  Deprecated: may be removed in future releases.
                 type: string
               replicas:
                 description: the number of replicas
@@ -9687,11 +10019,7 @@ spec:
                           Deprecated: use TasksRequestCPU instead with task name `builder`.
                         type: string
                       mavenProfiles:
-                        description: |-
-                          A list of references pointing to configmaps/secrets that contains a maven profile.
-                          This configmap/secret is a resource of the IntegrationKit created, therefore it needs to be present in the namespace where the operator is going to create the IntegrationKit.
-                          The content of the maven profile is expected to be a text containing a valid maven profile starting with `<profile>` and ending with `</profile>` that will be integrated as an inline profile in the POM.
-                          Syntax: [configmap|secret]:name[/key], where name represents the resource name, key optionally represents the resource key to be filtered (default key value = profile.xml).
+                        description: 'Deprecated: no longer in use.'
                         items:
                           type: string
                         type: array
@@ -9741,8 +10069,10 @@ spec:
                         - routine
                         type: string
                       tasks:
-                        description: A list of tasks to be executed (available only
-                          when using `pod` strategy) with format `<name>;<container-image>;<container-command>`.
+                        description: |-
+                          A list of tasks to be executed (available only when using `pod` strategy) with format `<name>;<container-image>;<container-command>`.
+
+                          Deprecated: may be removed in future versions.
                         items:
                           type: string
                         type: array
@@ -9750,7 +10080,10 @@ spec:
                         description: |-
                           A list of tasks sorted by the order of execution in a csv format, ie, `<taskName1>,<taskName2>,...`.
                           Mind that you must include also the operator tasks (`builder`, `quarkus-native`, `package`, `jib`, `s2i`)
-                          if you need to execute them. Useful only with `pod` strategy.
+                          if you need to execute them. Useful only with `pod` strategy. Disabled by default, you need to enable via
+                          BUILDER_TASKS_ENABLED=true environment variable on operator Deployment.
+
+                          Deprecated: may be removed in future versions.
                         type: string
                       tasksLimitCPU:
                         description: A list of limit cpu configuration for the specific
@@ -9804,7 +10137,7 @@ spec:
                         type: array
                       runtimeProvider:
                         description: The runtime provider to use for the integration.
-                          (Default, Camel K Runtime).
+                          (Default, plain Quarkus).
                         enum:
                         - quarkus
                         - plain-quarkus
@@ -9815,6 +10148,10 @@ spec:
                           You can use a fixed version (for example "3.2.3") or a semantic version (for example "3.x") which will try to resolve
                           to the best matching Catalog existing on the cluster (Default, the one provided by the operator version).
                         type: string
+                      skipObservabilityServices:
+                        description: Whether to skip the default Camel Observability
+                          Services dependency
+                        type: boolean
                     type: object
                   container:
                     description: The configuration of Container trait
@@ -9856,8 +10193,8 @@ spec:
                         type: boolean
                       image:
                         description: |-
-                          The main container image to use for the Integration. When using this parameter the operator will create a synthetic IntegrationKit which
-                          won't be able to execute traits requiring CamelCatalog. If the container image you're using is coming from an IntegrationKit, use instead
+                          The main container image to use for the Integration. When using this parameter, any trait requiring a
+                          CamelCatalog won't be able to execute. If the container image you're using is coming from an IntegrationKit, use instead
                           Integration `.spec.integrationKit` parameter. If you're moving the Integration across environments, you will also need to create an "external" IntegrationKit.
                         type: string
                       imagePullPolicy:
@@ -10255,6 +10592,11 @@ spec:
                         description: the URL of the repository where the project is
                           stored.
                         type: string
+                      username:
+                        description: |-
+                          the username used to authenticate against the Git server, together with the token stored in `secret` (default `camel-k`).
+                          Some Git servers validate it, for example Bitbucket Cloud access tokens require `x-token-auth`.
+                        type: string
                     type: object
                   health:
                     description: The configuration of Health trait
@@ -10290,7 +10632,7 @@ spec:
                         type: integer
                       livenessProbe:
                         description: The liveness probe path to use (default provided
-                          by the Catalog runtime used).
+                          by the dependency used).
                         type: string
                       livenessProbeEnabled:
                         description: Configures the liveness probe for the integration
@@ -10330,7 +10672,7 @@ spec:
                         type: integer
                       readinessProbe:
                         description: The readiness probe path to use (default provided
-                          by the Catalog runtime used).
+                          by the dependency used).
                         type: string
                       readinessProbeEnabled:
                         description: Configures the readiness probe for the integration
@@ -10352,7 +10694,8 @@ spec:
                         type: integer
                       startupFailureThreshold:
                         description: Minimum consecutive failures for the startup
-                          probe to be considered failed after having succeeded.
+                          probe to be considered failed after having succeeded (default
+                          10 if not specified).
                         format: int32
                         type: integer
                       startupInitialDelay:
@@ -10370,7 +10713,7 @@ spec:
                         type: integer
                       startupProbe:
                         description: The startup probe path to use (default provided
-                          by the Catalog runtime used).
+                          by the dependency used).
                         type: string
                       startupProbeEnabled:
                         description: Configures the startup probe for the integration
@@ -10446,11 +10789,28 @@ spec:
                         items:
                           type: string
                         type: array
+                      tlsCertManagerAuto:
+                        description: |-
+                          To automatically discover and configure a cert-manager Issuer or ClusterIssuer
+                          for TLS certificate issuance, in place of manually providing a secret.
+                        type: boolean
                       tlsHosts:
                         description: To configure tls hosts
                         items:
                           type: string
                         type: array
+                      tlsIssuerKind:
+                        description: |-
+                          The kind of the cert-manager issuer to use: `Issuer` (namespaced) or
+                          `ClusterIssuer` (cluster-scoped). Defaults to `ClusterIssuer` when
+                          tlsIssuerName is set without a kind.
+                        type: string
+                      tlsIssuerName:
+                        description: |-
+                          The name of the cert-manager Issuer or ClusterIssuer to use for automatic
+                          TLS certificate issuance. If set, cert-manager availability and the issuer's
+                          existence are verified, bypassing auto-discovery.
+                        type: string
                       tlsSecretName:
                         description: To configure tls secret name
                         type: string
@@ -10470,14 +10830,20 @@ spec:
                           traits share this common property.
                         type: boolean
                       initTasks:
-                        description: A list of init tasks to be executed with format
-                          `<name>;<container-image>;<container-command>`.
+                        description: |-
+                          A list of init tasks to be executed.
+                          Each task accepts the format `<name>;<container-image>;<container-command>` or key=value format
+                          `name=<name>;image=<image>;command=<command>;request-cpu=<quantity>;limit-cpu=<quantity>;request-memory=<quantity>;limit-memory=<quantity>`.
+                          Resource keys (request-cpu, limit-cpu, request-memory, limit-memory) are optional and accept Kubernetes resource quantities.
                         items:
                           type: string
                         type: array
                       sideCarTasks:
-                        description: A list of sidecar tasks to be executed with format
-                          `<name>;<container-image>;<container-command>`.
+                        description: |-
+                          A list of sidecar tasks to be executed.
+                          Each task accepts the format `<name>;<container-image>;<container-command>` or key=value format
+                          `name=<name>;image=<image>;command=<command>;request-cpu=<quantity>;limit-cpu=<quantity>;request-memory=<quantity>;limit-memory=<quantity>`.
+                          Resource keys (request-cpu, limit-cpu, request-memory, limit-memory) are optional and accept Kubernetes resource quantities.
                         items:
                           type: string
                         type: array
@@ -10511,7 +10877,7 @@ spec:
                     description: |-
                       The configuration of Jolokia trait.
 
-                      Deprecated: use jvm.agent instead.
+                      Deprecated: no longer in use.
                     properties:
                       CACert:
                         description: |-
@@ -10762,6 +11128,15 @@ spec:
                               description: The trigger metadata (see Keda documentation
                                 to learn how to fill for each type).
                               type: object
+                            metricType:
+                              description: |-
+                                The metric type for this trigger, mapping to KEDA's trigger-level `metricType`
+                                (`Utilization`, `AverageValue` or `Value`).
+                              enum:
+                              - Utilization
+                              - AverageValue
+                              - Value
+                              type: string
                             secrets:
                               description: The secrets mapping to use. Keda allows
                                 the possibility to use values coming from different
@@ -10969,7 +11344,10 @@ spec:
                         type: string
                     type: object
                   logging:
-                    description: The configuration of Logging trait
+                    description: |-
+                      The configuration of Logging trait.
+
+                      Deprecated: no longer in use.
                     properties:
                       color:
                         description: Colorize the log output
@@ -11005,7 +11383,10 @@ spec:
                         type: string
                     type: object
                   master:
-                    description: The configuration of Master trait
+                    description: |-
+                      The configuration of Master trait.
+
+                      Deprecated: no longer in use.
                     properties:
                       auto:
                         description: Enables automatic configuration of the trait.
@@ -11140,12 +11521,14 @@ spec:
                           traits share this common property.
                         type: boolean
                       targetAnnotations:
-                        description: The set of annotations to be transferred
+                        description: The set of annotations to be transferred. Use
+                          "*" to transfer all annotations.
                         items:
                           type: string
                         type: array
                       targetLabels:
-                        description: The set of labels to be transferred
+                        description: The set of labels to be transferred. Use "*"
+                          to transfer all labels.
                         items:
                           type: string
                         type: array
@@ -11201,10 +11584,7 @@ spec:
                         type: boolean
                     type: object
                   pod:
-                    description: |-
-                      The configuration of Pod trait.
-
-                      Deprecated: use init-containers instead.
+                    description: The configuration of Pod trait.
                     properties:
                       configuration:
                         description: |-
@@ -11214,8 +11594,7 @@ spec:
                         type: object
                         x-kubernetes-preserve-unknown-fields: true
                       enabled:
-                        description: Can be used to enable or disable a trait. All
-                          traits share this common property.
+                        description: 'Deprecated: no longer in use.'
                         type: boolean
                     type: object
                   prometheus:
@@ -11262,15 +11641,14 @@ spec:
                           traits share this common property.
                         type: boolean
                       imagePullerDelegation:
-                        description: When using a global operator with a shared platform,
-                          this enables delegation of the `system:image-puller` cluster
-                          role on the operator namespace to the integration service
-                          account.
+                        description: |-
+                          When using a global operator with a shared platform, this enables delegation of the `system:image-puller`
+                          cluster role on the operator namespace to the integration service account.
+
+                          Deprecated: may be removed in future releases.
                         type: boolean
                       secretName:
-                        description: The pull secret name to set on the Pod. If left
-                          empty this is automatically taken from the `IntegrationPlatform`
-                          registry configuration.
+                        description: The pull secret name to set on the Pod.
                         type: string
                     type: object
                   quarkus:
@@ -11332,7 +11710,7 @@ spec:
                     description: |-
                       The configuration of Registry trait (support removed since version 2.5.0).
 
-                      Deprecated: use jvm trait or read documentation.
+                      Deprecated: no longer in use.
                     properties:
                       configuration:
                         description: |-
@@ -11463,11 +11841,11 @@ spec:
                         type: boolean
                       runAsNonRoot:
                         description: Security Context RunAsNonRoot configuration (default
-                          false).
+                          true).
                         type: boolean
                       runAsUser:
                         description: 'Security Context RunAsUser configuration (default
-                          none): this value is automatically retrieved in Openshift
+                          user 1000): this value is automatically retrieved in Openshift
                           clusters when not explicitly set.'
                         format: int64
                         type: integer
@@ -11566,7 +11944,10 @@ spec:
                     - configuration
                     type: object
                   telemetry:
-                    description: The configuration of Telemetry trait
+                    description: |-
+                      The configuration of Telemetry trait.
+
+                      Deprecated: no longer in use.
                     properties:
                       auto:
                         description: Enables automatic configuration of the trait,

@@ -26,12 +26,10 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	serving "knative.dev/serving/pkg/apis/serving/v1"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	serving "github.com/apache/camel-k/v2/pkg/apis/duck/knative/serving/v1"
 	"github.com/apache/camel-k/v2/pkg/util/boolean"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
@@ -60,9 +58,6 @@ func newMountTrait() Trait {
 func (t *mountTrait) Configure(e *Environment) (bool, *TraitCondition, error) {
 	if e.Integration == nil || !e.IntegrationInRunningPhases() {
 		return false, nil, nil
-	}
-	if e.Integration.IsSynthetic() {
-		return false, NewIntegrationConditionPlatformDisabledWithMessage("Mount", "synthetic integration"), nil
 	}
 	// Validate resources and pvcs
 	for _, c := range t.Configs {
@@ -212,10 +207,8 @@ func (t *mountTrait) configureVolumesAndMounts(
 
 			// EmptyDir volume for truststore output
 			trustStoreVolume := corev1.Volume{
-				Name: caCertVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{},
-				},
+				Name:     caCertVolumeName,
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			}
 			*vols = append(*vols, trustStoreVolume)
 
@@ -354,18 +347,14 @@ func (t *mountTrait) computeApplicationProperties(e *Environment) (*corev1.Confi
 
 	if applicationProperties != "" {
 		return &corev1.ConfigMap{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ConfigMap",
-				APIVersion: "v1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      e.Integration.Name + "-application-properties",
-				Namespace: e.Integration.Namespace,
-				Labels: map[string]string{
-					v1.IntegrationLabel:                e.Integration.Name,
-					"camel.apache.org/properties.type": "application",
-					kubernetes.ConfigMapTypeLabel:      CamelPropertiesType,
-				},
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+			Name:       e.Integration.Name + "-application-properties",
+			Namespace:  e.Integration.Namespace,
+			Labels: map[string]string{
+				v1.IntegrationLabel:                e.Integration.Name,
+				"camel.apache.org/properties.type": "application",
+				kubernetes.ConfigMapTypeLabel:      CamelPropertiesType,
 			},
 			Data: map[string]string{
 				"application.properties": applicationProperties,

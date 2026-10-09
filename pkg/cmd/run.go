@@ -24,12 +24,10 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"os/signal"
 	"path"
 	"reflect"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/magiconair/properties"
 
@@ -38,7 +36,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -55,7 +52,6 @@ import (
 	k8slog "github.com/apache/camel-k/v2/pkg/util/kubernetes/log"
 	"github.com/apache/camel-k/v2/pkg/util/property"
 	"github.com/apache/camel-k/v2/pkg/util/resource"
-	"github.com/apache/camel-k/v2/pkg/util/sync"
 	"github.com/apache/camel-k/v2/pkg/util/watch"
 )
 
@@ -80,7 +76,7 @@ func newCmdRun(rootCmdOptions *RootCmdOptions) (*cobra.Command, *runCmdOptions) 
 	cmd.Flags().String("image", "", "An image built externally (ie, via CICD). Enabling it will skip the Integration build phase.")
 	cmd.Flags().StringArrayP("dependency", "d", nil, "A dependency that should be included, e.g., \"camel:mail\" for a Camel component, "+
 		"\"mvn:org.my:app:1.0\" for a Maven dependency")
-	cmd.Flags().BoolP("wait", "w", false, "Wait for the integration to be running")
+	cmd.Flags().BoolP("wait", "w", false, "Wait for the integration to be running or built")
 	cmd.Flags().StringP("kit", "k", "", "The kit used to run the integration")
 	cmd.Flags().StringArrayP("property", "p", nil, "Add a runtime property or a local properties file from a path "+
 		"(syntax: [my-key=my-value|file:/path/to/my-conf.properties])")
@@ -94,10 +90,8 @@ func newCmdRun(rootCmdOptions *RootCmdOptions) (*cobra.Command, *runCmdOptions) 
 		"key optionally represents the configmap/secret key to be filtered and path represents the destination path)")
 	cmd.Flags().StringArray("maven-repository", nil, "Add a maven repository")
 	cmd.Flags().Bool("logs", false, "Print integration logs")
-	cmd.Flags().Bool("sync", false, "[Deprecated] Synchronize the local source file with the cluster, republishing at each change")
-	cmd.Flags().Bool("dev", false, "[Deprecated] Enable Dev mode (equivalent to \"-w --logs --sync\")")
 	cmd.Flags().Bool("use-flows", true, "Write yaml sources as Flow objects in the integration custom resource")
-	cmd.Flags().StringP("operator-id", "x", "camel-k", "Operator id selected to manage this integration.")
+	cmd.Flags().StringP("operator-id", "x", "", "Operator id selected to manage this integration.")
 	cmd.Flags().String("profile", "", "Trait profile used for deployment")
 	cmd.Flags().String("integration-profile", "", "Integration profile used for deployment")
 	cmd.Flags().StringArrayP("trait", "t", nil, "Configure a trait. E.g. \"-t service.enabled=false\"")
@@ -109,7 +103,7 @@ func newCmdRun(rootCmdOptions *RootCmdOptions) (*cobra.Command, *runCmdOptions) 
 	cmd.Flags().StringArray("label", nil, "Add a label to the integration. E.g. \"--label my.company=hello\"")
 	cmd.Flags().StringArray("source", nil, "Add source file to your integration, "+
 		"this is added to the list of files listed as arguments of the command")
-	cmd.Flags().String("pod-template", "", "The path of the YAML file containing a PodSpec template to be used for the Integration pods")
+	cmd.Flags().String("pod-template", "", "[Deprecated] The path of the YAML file containing a PodSpec template to be used for the Integration pods")
 	cmd.Flags().String("service-account", "", "The SA to use to run this Integration")
 	cmd.Flags().String("git", "", "A Git repository containing the project to build.")
 	cmd.Flags().String("git-branch", "", "Git branch to checkout when using --git option")
@@ -130,12 +124,8 @@ type runCmdOptions struct {
 	Compression bool `mapstructure:"compression" yaml:",omitempty"`
 	Wait        bool `mapstructure:"wait"        yaml:",omitempty"`
 	Logs        bool `mapstructure:"logs"        yaml:",omitempty"`
-	// Deprecated: won't be supported in the future
-	Sync bool `mapstructure:"sync" yaml:",omitempty"`
-	// Deprecated: won't be supported in the future
-	Dev      bool `mapstructure:"dev"       yaml:",omitempty"`
-	UseFlows bool `mapstructure:"use-flows" yaml:",omitempty"`
-	Save     bool `kamel:"omitsave"         mapstructure:"save" yaml:",omitempty"`
+	UseFlows    bool `mapstructure:"use-flows"   yaml:",omitempty"`
+	Save        bool `kamel:"omitsave"           mapstructure:"save" yaml:",omitempty"`
 	// Deprecated: won't be supported in the future
 	IntegrationKit     string `mapstructure:"kit"                 yaml:",omitempty"`
 	IntegrationName    string `mapstructure:"name"                yaml:",omitempty"`
@@ -246,10 +236,6 @@ func (o *runCmdOptions) validateArgs(cmd *cobra.Command, args []string) error {
 }
 
 func (o *runCmdOptions) validate(cmd *cobra.Command) error {
-	if o.OperatorID == "" {
-		return errors.New("cannot use empty operator id")
-	}
-
 	for _, volume := range o.Volumes {
 		volumeConfig := strings.Split(volume, ":")
 		if len(volumeConfig) != 2 || len(strings.TrimSpace(volumeConfig[0])) == 0 || len(strings.TrimSpace(volumeConfig[1])) == 0 {
@@ -262,10 +248,6 @@ func (o *runCmdOptions) validate(cmd *cobra.Command) error {
 	err := validatePropertyFiles(propertyFiles)
 	if err != nil {
 		return err
-	}
-
-	if o.OutputFormat != "" && o.Dev {
-		return errors.New("cannot use --dev with -o/--output option")
 	}
 
 	for _, label := range o.Labels {
@@ -302,11 +284,6 @@ func (o *runCmdOptions) validate(cmd *cobra.Command) error {
 	// Deprecated: to be removed
 	if o.Compression {
 		fmt.Fprintf(cmd.OutOrStdout(), "Compression property is deprecated. It will be removed from future releases.\n")
-	}
-
-	// Deprecated: to be removed
-	if o.Sync || o.Dev {
-		fmt.Fprintf(cmd.OutOrStdout(), "Dev and Sync properties are deprecated. They will be removed from future releases.\n")
 	}
 
 	var client client.Client
@@ -353,32 +330,7 @@ func (o *runCmdOptions) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if o.Dev {
-		cs := make(chan os.Signal, 1)
-		signal.Notify(cs, os.Interrupt, syscall.SIGTERM)
-		go func() {
-			<-cs
-			if o.Context.Err() != nil {
-				// Context canceled
-				return
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), "Run integration terminating")
-			err := DeleteIntegration(o.Context, c, integration.Name, integration.Namespace)
-			if err != nil {
-				fmt.Fprintln(cmd.ErrOrStderr(), err)
-				os.Exit(1)
-			}
-			os.Exit(0)
-		}()
-	}
-
-	if o.Sync || o.Dev {
-		err = o.syncIntegration(cmd, c, args)
-		if err != nil {
-			return err
-		}
-	}
-	if o.Logs || o.Dev || o.Wait {
+	if o.Logs || o.Wait {
 		//nolint:errcheck
 		go watch.HandleIntegrationEvents(o.Context, c, integration, func(event *corev1.Event) bool {
 			fmt.Fprintln(cmd.OutOrStdout(), event.Message)
@@ -386,16 +338,21 @@ func (o *runCmdOptions) run(cmd *cobra.Command, args []string) error {
 			return true
 		})
 	}
-	if o.Wait || o.Dev {
+	if o.Wait {
+		phase := v1.IntegrationPhaseRunning
+		if o.DontRunAfterBuild {
+			phase = v1.IntegrationPhaseBuildComplete
+		}
+
 		for {
-			integrationPhase, err := o.waitForIntegrationReady(cmd, c, integration)
-			if err != nil {
-				return err
+			integrationPhase, waitErr := o.waitForIntegrationPhase(cmd, c, integration, phase)
+			if waitErr != nil {
+				return waitErr
 			}
 
 			if integrationPhase == nil || *integrationPhase == v1.IntegrationPhaseError {
 				return fmt.Errorf("integration \"%s\" deployment failed", integration.Name)
-			} else if *integrationPhase == v1.IntegrationPhaseRunning {
+			} else if *integrationPhase == phase {
 				break
 			}
 
@@ -409,14 +366,11 @@ func (o *runCmdOptions) run(cmd *cobra.Command, args []string) error {
 			integration.ResourceVersion = existing.ResourceVersion
 		}
 	}
-	if o.Logs || o.Dev {
+	if o.Logs {
 		err = k8slog.Print(o.Context, cmd, c, integration, nil, cmd.OutOrStdout())
 		if err != nil {
 			return err
 		}
-	}
-
-	if o.Sync || o.Logs || o.Dev {
 		// Let's add a Wait point, otherwise the script terminates
 		<-o.RootContext.Done()
 	}
@@ -448,7 +402,7 @@ func (o *runCmdOptions) postRun(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func (o *runCmdOptions) waitForIntegrationReady(cmd *cobra.Command, c client.Client, integration *v1.Integration) (*v1.IntegrationPhase, error) {
+func (o *runCmdOptions) waitForIntegrationPhase(cmd *cobra.Command, c client.Client, integration *v1.Integration, wanted v1.IntegrationPhase) (*v1.IntegrationPhase, error) {
 	handler := func(i *v1.Integration) bool {
 		//
 		// TODO when we add health checks, we should Wait until they are passed
@@ -457,7 +411,7 @@ func (o *runCmdOptions) waitForIntegrationReady(cmd *cobra.Command, c client.Cli
 			// TODO remove this log when we make sure that events are always created
 			fmt.Fprintf(cmd.OutOrStdout(), "Progress: integration %q in phase %s\n", integration.Name, string(i.Status.Phase))
 		}
-		if i.Status.Phase == v1.IntegrationPhaseRunning || i.Status.Phase == v1.IntegrationPhaseError {
+		if i.Status.Phase == wanted || i.Status.Phase == v1.IntegrationPhaseError {
 			return false
 		}
 
@@ -465,75 +419,6 @@ func (o *runCmdOptions) waitForIntegrationReady(cmd *cobra.Command, c client.Cli
 	}
 
 	return watch.HandleIntegrationStateChanges(o.Context, c, integration, handler)
-}
-
-func (o *runCmdOptions) syncIntegration(cmd *cobra.Command, c client.Client, sources []string) error {
-	// Let's watch all relevant files when in dev mode
-	res := filterFileLocation(o.Resources)
-	cfg := filterFileLocation(o.Configs)
-	prop := filterFileLocation(o.Properties)
-	buildProp := filterFileLocation(o.BuildProperties)
-
-	files := make([]string, 0,
-		len(sources)+len(res)+len(cfg)+len(prop)+len(buildProp),
-	)
-
-	files = append(files, sources...)
-	files = append(files, res...)
-	files = append(files, cfg...)
-	files = append(files, prop...)
-	files = append(files, buildProp...)
-
-	for _, s := range files {
-		ok, err := source.IsLocalAndFileExists(s)
-		if err != nil {
-			return err
-		}
-		if ok {
-			changes, err := sync.File(o.Context, s)
-			if err != nil {
-				return err
-			}
-			go func() {
-				for {
-					select {
-					case <-o.Context.Done():
-						return
-					case <-changes:
-						// let's create a new command to parse modeline changes and update our integration
-						newCmd, _, err := createKamelWithModelineCommand(o.RootContext, os.Args[1:])
-						newCmd.SetOut(cmd.OutOrStdout())
-						newCmd.SetErr(cmd.ErrOrStderr())
-						if err != nil {
-							fmt.Fprintln(newCmd.ErrOrStderr(), "Unable to sync integration: ", err.Error())
-
-							continue
-						}
-						newCmd.Args = o.validateArgs
-						newCmd.PreRunE = o.decode
-						newCmd.RunE = func(cmd *cobra.Command, args []string) error {
-							_, err := o.createOrUpdateIntegration(cmd, c, sources)
-
-							return err
-						}
-						newCmd.PostRunE = nil
-
-						// cancel the existing command to release watchers
-						o.ContextCancel()
-						// run the new one
-						err = newCmd.Execute()
-						if err != nil {
-							fmt.Fprintln(newCmd.ErrOrStderr(), "Unable to sync integration: ", err.Error())
-						}
-					}
-				}
-			}()
-		} else {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: the following URL will not be watched for changes: %s\n", s)
-		}
-	}
-
-	return nil
 }
 
 func (o *runCmdOptions) createOrUpdateIntegration(cmd *cobra.Command, c client.Client, sources []string) (*v1.Integration, error) {
@@ -675,14 +560,10 @@ func showIntegrationOutput(cmd *cobra.Command, integration *v1.Integration, outp
 
 func (o *runCmdOptions) getIntegration(cmd *cobra.Command, c client.Client, namespace, name string) (*v1.Integration, *v1.Integration, error) {
 	it := &v1.Integration{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       v1.IntegrationKind,
-			APIVersion: v1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
+		Kind:       v1.IntegrationKind,
+		APIVersion: v1.SchemeGroupVersion.String(),
+		Namespace:  namespace,
+		Name:       name,
 	}
 
 	existing := &v1.Integration{}
@@ -719,18 +600,13 @@ func (o *runCmdOptions) applyAnnotations(it *v1.Integration) {
 	}
 
 	// --operator-id={id} is a syntax sugar for '--annotation camel.apache.org/operator.id={id}'
-	it.SetOperatorID(strings.TrimSpace(o.OperatorID))
+	if o.OperatorID != "" {
+		it.SetOperatorID(strings.TrimSpace(o.OperatorID))
+	}
 
 	// --integration-profile={id} is a syntax sugar for '--annotation camel.apache.org/integration-profile.id={id}'
 	if o.IntegrationProfile != "" {
-		if strings.Contains(o.IntegrationProfile, "/") {
-			namespacedName := strings.SplitN(o.IntegrationProfile, "/", 2)
-			//nolint:staticcheck
-			v1.SetAnnotation(&it.ObjectMeta, v1.IntegrationProfileNamespaceAnnotation, namespacedName[0])
-			v1.SetAnnotation(&it.ObjectMeta, v1.IntegrationProfileAnnotation, namespacedName[1])
-		} else {
-			v1.SetAnnotation(&it.ObjectMeta, v1.IntegrationProfileAnnotation, o.IntegrationProfile)
-		}
+		v1.SetAnnotation(&it.ObjectMeta, v1.IntegrationProfileAnnotation, o.IntegrationProfile)
 	}
 
 	for _, annotation := range o.Annotations {
@@ -763,11 +639,9 @@ func (o *runCmdOptions) resolveSources(cmd *cobra.Command, sources []string, it 
 			it.Spec.AddFlows(flows...)
 		} else {
 			it.Spec.AddSources(v1.SourceSpec{
-				DataSpec: v1.DataSpec{
-					Name:        source.Name,
-					Content:     source.Content,
-					Compression: source.Compress,
-				},
+				Name:        source.Name,
+				Content:     source.Content,
+				Compression: source.Compress,
 			})
 		}
 	}

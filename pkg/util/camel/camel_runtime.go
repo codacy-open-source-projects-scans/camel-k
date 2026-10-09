@@ -35,7 +35,7 @@ import (
 // CreateCatalog --.
 func CreateCatalog(
 	ctx context.Context, client client.Client, namespace string,
-	mavenSpec v1.MavenSpec, timeout time.Duration, runtime v1.RuntimeSpec, extraRepositories []string) (*RuntimeCatalog, error) {
+	mavenSpec v1.MavenSpec, timeout time.Duration, runtime v1.RuntimeSpec, extraRepositories []string, operatorId string) (*RuntimeCatalog, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	catalog, err := GenerateCatalog(ctx, client, namespace, mavenSpec, runtime, extraRepositories)
@@ -52,6 +52,10 @@ func CreateCatalog(
 	cx.Labels[kubernetes.CamelLabelRuntimeVersion] = runtime.Version
 	cx.Labels[kubernetes.CamelLabelRuntimeProvider] = string(runtime.Provider)
 	cx.Labels["camel.apache.org/catalog.generated"] = "true"
+
+	if operatorId != "" {
+		cx.SetOperatorID(operatorId)
+	}
 
 	if err := client.Create(ctx, &cx); err != nil {
 		if k8serrors.IsAlreadyExists(err) {
@@ -107,4 +111,25 @@ func LoadCatalog(ctx context.Context, client client.Client, namespace string, ru
 	}
 
 	return catalog, nil
+}
+
+// LoadCatalogFixedRuntime loads a catalog matching exactly the runtime provided.
+func LoadCatalogFixedRuntime(ctx context.Context, client client.Client, namespace string, runtime v1.RuntimeSpec) (*RuntimeCatalog, error) {
+	options := []k8sclient.ListOption{
+		k8sclient.InNamespace(namespace),
+	}
+
+	list := v1.NewCamelCatalogList()
+	err := client.List(ctx, &list, options...)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, catalog := range list.Items {
+		if catalog.Spec.Runtime.Version == runtime.Version && catalog.Spec.Runtime.Provider == runtime.Provider {
+			return NewRuntimeCatalog(catalog), nil
+		}
+	}
+
+	return nil, nil
 }

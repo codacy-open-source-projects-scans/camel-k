@@ -19,7 +19,6 @@ package catalog
 
 import (
 	"context"
-	goruntime "runtime"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -29,7 +28,6 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -96,9 +94,6 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 					return !e.DeleteStateUnknown
 				},
 			})).
-		WithOptions(controller.Options{
-			MaxConcurrentReconciles: goruntime.GOMAXPROCS(0),
-		}).
 		Complete(r)
 }
 
@@ -156,7 +151,6 @@ func (r *reconcileCatalog) Reconcile(ctx context.Context, request reconcile.Requ
 	}
 
 	var targetPhase v1.CamelCatalogPhase
-	var err error
 
 	target := instance.DeepCopy()
 	targetLog := rlog.ForCatalog(target)
@@ -172,7 +166,7 @@ func (r *reconcileCatalog) Reconcile(ctx context.Context, request reconcile.Requ
 		targetLog.Infof("Invoking action %s", a.Name())
 
 		phaseFrom := target.Status.Phase
-		target, err = a.Handle(ctx, target)
+		newTarget, err := a.Handle(ctx, target)
 
 		if err != nil {
 			camelevent.NotifyError(r.recorder, &instance, target, instance.Name, instance.Kind, err)
@@ -180,22 +174,22 @@ func (r *reconcileCatalog) Reconcile(ctx context.Context, request reconcile.Requ
 			return reconcile.Result{}, err
 		}
 
-		if target != nil {
-			target.Status.ObservedGeneration = instance.GetGeneration()
+		if newTarget != nil {
+			newTarget.Status.ObservedGeneration = instance.GetGeneration()
 
-			if err := r.client.Status().Patch(ctx, target, ctrl.MergeFrom(&instance)); err != nil {
-				camelevent.NotifyError(r.recorder, &instance, target, target.Name, target.Kind, err)
+			if err := r.client.Status().Patch(ctx, newTarget, ctrl.MergeFrom(&instance)); err != nil {
+				camelevent.NotifyError(r.recorder, &instance, newTarget, newTarget.Name, newTarget.Kind, err)
 
 				return reconcile.Result{}, err
 			}
 
-			targetPhase = target.Status.Phase
+			targetPhase = newTarget.Status.Phase
 
 			if targetPhase != phaseFrom {
 				targetLog.Info(
 					"State transition",
 					"phase-from", phaseFrom,
-					"phase-to", target.Status.Phase,
+					"phase-to", newTarget.Status.Phase,
 				)
 			}
 		}

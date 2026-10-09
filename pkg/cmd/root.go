@@ -40,24 +40,21 @@ superpowers.
 //
 //nolint:containedctx
 type RootCmdOptions struct {
-	RootContext   context.Context    `mapstructure:"-"`
-	Context       context.Context    `mapstructure:"-"`
-	ContextCancel context.CancelFunc `mapstructure:"-"`
-	_client       client.Client      `mapstructure:"-"`
-	Flags         *viper.Viper       `mapstructure:"-"`
-	KubeConfig    string             `mapstructure:"kube-config"`
-	Namespace     string             `mapstructure:"namespace"`
-	Verbose       bool               `mapstructure:"verbose"     yaml:",omitempty"`
+	RootContext context.Context `mapstructure:"-"`
+	Context     context.Context `mapstructure:"-"`
+	_client     client.Client   `mapstructure:"-"`
+	Flags       *viper.Viper    `mapstructure:"-"`
+	KubeConfig  string          `mapstructure:"kube-config"`
+	Namespace   string          `mapstructure:"namespace"`
+	Verbose     bool            `mapstructure:"verbose"     yaml:",omitempty"`
 }
 
 // NewKamelCommand --.
 func NewKamelCommand(ctx context.Context) (*cobra.Command, error) {
-	childCtx, childCancel := context.WithCancel(ctx)
 	options := RootCmdOptions{
-		RootContext:   ctx,
-		Context:       childCtx,
-		ContextCancel: childCancel,
-		Flags:         viper.New(),
+		RootContext: ctx,
+		Context:     ctx,
+		Flags:       viper.New(),
 	}
 
 	cmd := kamelPreAddCommandInit(&options)
@@ -136,10 +133,7 @@ func addKamelSubcommands(cmd *cobra.Command, options *RootCmdOptions) {
 	cmd.AddCommand(cmdOnly(newCmdVersion(options)))
 	cmd.AddCommand(cmdOnly(newCmdRun(options)))
 	cmd.AddCommand(cmdOnly(newCmdDeploy(options)))
-	cmd.AddCommand(cmdOnly(newCmdGet(options)))
-	cmd.AddCommand(cmdOnly(newCmdDelete(options)))
 	cmd.AddCommand(cmdOnly(newCmdLog(options)))
-	cmd.AddCommand(newCmdKit(options))
 	cmd.AddCommand(cmdOnly(newCmdReset(options)))
 	cmd.AddCommand(cmdOnly(newCmdRebuild(options)))
 	cmd.AddCommand(cmdOnly(newCmdOperator(options)))

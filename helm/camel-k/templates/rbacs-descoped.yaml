@@ -192,7 +192,6 @@ rules:
   resources:
   - roles
   - rolebindings
-  - clusterrolebindings
   verbs:
   - create
   - get
@@ -215,6 +214,40 @@ rules:
   - subjectaccessreviews
   verbs:
   - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app: camel-k
+  name: {{ include "camel-k.fullname" . }}-operator-arkmq
+rules:
+- apiGroups:
+  - broker.amq.io
+  resources:
+  - activemqartemises
+  - activemqartemisaddresses
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app: camel-k
+  name: {{ include "camel-k.fullname" . }}-operator-certmanager
+rules:
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - issuers
+  - clusterissuers
+  verbs:
+  - get
+  - list
+  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -272,6 +305,7 @@ rules:
   - get
   - list
   - patch
+  - watch
 - apiGroups:
   - eventing.knative.dev
   resources:
@@ -467,6 +501,36 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: {{ include "camel-k.fullname" . }}-operator
+subjects:
+- kind: ServiceAccount
+  name: {{ include "camel-k.fullname" . }}-operator
+  namespace: '{{ .Release.Namespace }}'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app: camel-k
+  name: {{ include "camel-k.fullname" . }}-operator-arkmq
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "camel-k.fullname" . }}-operator-arkmq
+subjects:
+- kind: ServiceAccount
+  name: {{ include "camel-k.fullname" . }}-operator
+  namespace: '{{ .Release.Namespace }}'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app: camel-k
+  name: {{ include "camel-k.fullname" . }}-operator-certmanager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "camel-k.fullname" . }}-operator-certmanager
 subjects:
 - kind: ServiceAccount
   name: {{ include "camel-k.fullname" . }}-operator

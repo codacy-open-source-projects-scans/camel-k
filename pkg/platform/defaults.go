@@ -19,6 +19,7 @@ package platform
 
 import (
 	"context"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -39,7 +40,6 @@ import (
 
 const (
 	DefaultPlatformName                    = "camel-k"
-	BuilderServiceAccount                  = "camel-k-builder"
 	DefaultBuildTimeout                    = 5 * time.Minute
 	DefaultBuildStrategy                   = v1.BuildStrategyRoutine
 	DefaultBuildOrderStrategy              = v1.BuildOrderStrategyDependencies
@@ -48,6 +48,17 @@ const (
 	DefaultMaxRunningBuildsPodStrategy     = 10
 	DefaultMaxRunningBuildsRoutineStrategy = 3
 )
+
+var BuilderServiceAccount = getBuilderServiceAccount()
+
+func getBuilderServiceAccount() string {
+	bsa := os.Getenv("BUILDER_SA")
+	if bsa == "" {
+		bsa = "camel-k-builder"
+	}
+
+	return bsa
+}
 
 // ConfigureDefaults fills with default values all missing details about the integration platform.
 // Defaults are set in the status fields, not in the spec.
@@ -64,7 +75,7 @@ func ConfigureDefaults(ctx context.Context, c client.Client, p *v1.IntegrationPl
 	}
 
 	if p.Status.Build.RuntimeProvider == "" {
-		p.Status.Build.RuntimeProvider = v1.RuntimeProviderQuarkus
+		p.Status.Build.RuntimeProvider = defaults.DefaultRuntimeProvider
 		log.Debugf("Integration Platform %s [%s]: setting default runtime provider %s", p.Name, p.Namespace, v1.RuntimeProviderQuarkus)
 	}
 	if p.Status.Build.RuntimeVersion == "" {
@@ -258,12 +269,6 @@ func applyPlatformSpec(source *v1.IntegrationPlatform, target *v1.IntegrationPla
 		}
 	}
 
-	if len(source.Status.Build.Maven.Extension) > 0 && len(target.Status.Build.Maven.Extension) == 0 {
-		log.Debugf("Integration Platform %s [%s]: setting Maven extensions", target.Name, target.Namespace)
-		target.Status.Build.Maven.Extension = make([]v1.MavenArtifact, len(source.Status.Build.Maven.Extension))
-		copy(target.Status.Build.Maven.Extension, source.Status.Build.Maven.Extension)
-	}
-
 	if target.Status.Build.Registry.Address == "" && source.Status.Build.Registry.Address != "" {
 		log.Debugf("Integration Platform %s [%s]: setting registry", target.Name, target.Namespace)
 		source.Status.Build.Registry.DeepCopyInto(&target.Status.Build.Registry)
@@ -381,12 +386,10 @@ func setStatusAdditionalInfo(platform *v1.IntegrationPlatform) {
 //nolint:staticcheck
 func createServiceCaBundleConfigMap(ctx context.Context, client client.Client, p *v1.IntegrationPlatform) (*corev1.ConfigMap, error) {
 	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      BuilderServiceAccount + "-ca",
-			Namespace: p.Namespace,
-			Annotations: map[string]string{
-				"service.beta.openshift.io/inject-cabundle": "true",
-			},
+		Name:      BuilderServiceAccount + "-ca",
+		Namespace: p.Namespace,
+		Annotations: map[string]string{
+			"service.beta.openshift.io/inject-cabundle": "true",
 		},
 	}
 
@@ -401,10 +404,8 @@ func createServiceCaBundleConfigMap(ctx context.Context, client client.Client, p
 //nolint:staticcheck
 func createBuilderRegistryRoleBinding(ctx context.Context, client client.Client, p *v1.IntegrationPlatform) error {
 	rb := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      BuilderServiceAccount + "-registry",
-			Namespace: p.Namespace,
-		},
+		Name:      BuilderServiceAccount + "-registry",
+		Namespace: p.Namespace,
 		Subjects: []rbacv1.Subject{
 			{
 				Kind: "ServiceAccount",

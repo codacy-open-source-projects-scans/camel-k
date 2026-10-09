@@ -24,7 +24,11 @@ import (
 
 const (
 	// CamelCatalogKind -- .
-	CamelCatalogKind string = "CamelCatalog"
+	CamelCatalogKind    string = "CamelCatalog"
+	MavenQuarkusGroupID string = "org.apache.camel.quarkus"
+
+	// CamelQuarkusObservabilityServicesArtifactID -- .
+	CamelQuarkusObservabilityServicesArtifactID string = "camel-quarkus-observability-services"
 )
 
 // +genclient

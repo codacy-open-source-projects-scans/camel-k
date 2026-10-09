@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
@@ -47,7 +48,6 @@ func TestIntegrationPlatformDefaults(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, v1.IntegrationPlatformClusterKubernetes, ip.Status.Cluster)
-	assert.Equal(t, v1.TraitProfile(""), ip.Status.Profile)
 	assert.Equal(t, v1.BuildStrategyRoutine, ip.Status.Build.BuildConfiguration.Strategy)
 	assert.Equal(t, v1.BuildOrderStrategyDependencies, ip.Status.Build.BuildConfiguration.OrderStrategy)
 	assert.Equal(t, defaults.BaseImage(), ip.Status.Build.BaseImage)
@@ -77,8 +77,8 @@ func TestApplyGlobalPlatformSpec(t *testing.T) {
 				},
 			},
 			Traits: v1.Traits{
-				Logging: &trait.LoggingTrait{
-					Level: "DEBUG",
+				Environment: &trait.EnvironmentTrait{
+					HTTPProxy: ptr.To(false),
 				},
 				Container: &trait.ContainerTrait{
 					ImagePullPolicy: corev1.PullAlways,
@@ -86,7 +86,6 @@ func TestApplyGlobalPlatformSpec(t *testing.T) {
 				},
 			},
 			Cluster: v1.IntegrationPlatformClusterOpenShift,
-			Profile: v1.TraitProfileOpenShift,
 		},
 	}
 
@@ -108,15 +107,14 @@ func TestApplyGlobalPlatformSpec(t *testing.T) {
 	applyPlatformSpec(&global, &ip)
 
 	assert.Equal(t, v1.IntegrationPlatformClusterOpenShift, ip.Status.Cluster)
-	assert.Equal(t, v1.TraitProfileOpenShift, ip.Status.Profile)
 	assert.Equal(t, v1.BuildStrategyRoutine, ip.Status.Build.BuildConfiguration.Strategy)
 	assert.Equal(t, v1.BuildOrderStrategyFIFO, ip.Status.Build.BuildConfiguration.OrderStrategy)
 	assert.Equal(t, int32(3), ip.Status.Build.MaxRunningBuilds) // default for build strategy routine
 	assert.Equal(t, len(global.Status.Build.Maven.CLIOptions), len(ip.Status.Build.Maven.CLIOptions))
 	assert.Equal(t, global.Status.Build.Maven.CLIOptions, ip.Status.Build.Maven.CLIOptions)
 	assert.NotNil(t, ip.Status.Traits)
-	assert.NotNil(t, ip.Status.Traits.Logging)
-	assert.Equal(t, "DEBUG", ip.Status.Traits.Logging.Level)
+	assert.NotNil(t, ip.Status.Traits.Environment)
+	assert.False(t, ptr.Deref(ip.Status.Traits.Environment.HTTPProxy, true))
 	assert.NotNil(t, ip.Status.Traits.Container)
 	assert.Equal(t, corev1.PullAlways, ip.Status.Traits.Container.ImagePullPolicy)
 	assert.Equal(t, "0.1", ip.Status.Traits.Container.LimitCPU)
@@ -223,8 +221,8 @@ func TestRetainLocalPlatformSpec(t *testing.T) {
 				},
 			},
 			Traits: v1.Traits{
-				Logging: &trait.LoggingTrait{
-					Level: "DEBUG",
+				Environment: &trait.EnvironmentTrait{
+					HTTPProxy: ptr.To(false),
 				},
 				Container: &trait.ContainerTrait{
 					ImagePullPolicy: corev1.PullIfNotPresent,
@@ -232,7 +230,6 @@ func TestRetainLocalPlatformSpec(t *testing.T) {
 				},
 			},
 			Cluster: v1.IntegrationPlatformClusterOpenShift,
-			Profile: v1.TraitProfileOpenShift,
 		},
 	}
 
@@ -267,7 +264,6 @@ func TestRetainLocalPlatformSpec(t *testing.T) {
 				},
 			},
 			Cluster: v1.IntegrationPlatformClusterKubernetes,
-			Profile: v1.TraitProfileKnative,
 		},
 	}
 
@@ -276,15 +272,14 @@ func TestRetainLocalPlatformSpec(t *testing.T) {
 	applyPlatformSpec(&global, &ip)
 
 	assert.Equal(t, v1.IntegrationPlatformClusterKubernetes, ip.Status.Cluster)
-	assert.Equal(t, v1.TraitProfileKnative, ip.Status.Profile)
 	assert.Equal(t, v1.BuildStrategyPod, ip.Status.Build.BuildConfiguration.Strategy)
 	assert.Equal(t, v1.BuildOrderStrategyFIFO, ip.Status.Build.BuildConfiguration.OrderStrategy)
 	assert.Equal(t, int32(1), ip.Status.Build.MaxRunningBuilds)
 	assert.Equal(t, len(global.Status.Build.Maven.CLIOptions), len(ip.Status.Build.Maven.CLIOptions))
 	assert.Equal(t, global.Status.Build.Maven.CLIOptions, ip.Status.Build.Maven.CLIOptions)
 	assert.NotNil(t, ip.Status.Traits)
-	assert.NotNil(t, ip.Status.Traits.Logging)
-	assert.Equal(t, "DEBUG", ip.Status.Traits.Logging.Level)
+	assert.NotNil(t, ip.Status.Traits.Environment)
+	assert.False(t, ptr.Deref(ip.Status.Traits.Environment.HTTPProxy, true))
 	assert.NotNil(t, ip.Status.Traits.Container)
 	assert.Equal(t, corev1.PullAlways, ip.Status.Traits.Container.ImagePullPolicy)
 	assert.Equal(t, "0.1", ip.Status.Traits.Container.LimitCPU)

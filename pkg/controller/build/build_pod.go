@@ -24,7 +24,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
@@ -32,6 +31,7 @@ import (
 	"github.com/apache/camel-k/v2/pkg/platform"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
 	"github.com/apache/camel-k/v2/pkg/util/openshift"
+	"github.com/apache/camel-k/v2/pkg/util/registry"
 )
 
 const (
@@ -50,31 +50,28 @@ func newBuildPod(ctx context.Context, client client.Client, build *v1.Build) *co
 		// get pod security context from security context constraint configuration in namespace
 		//nolint:staticcheck
 		if task.S2i != nil {
-			podSecurityContextConstrained, _ := openshift.GetOpenshiftPodSecurityContextRestricted(ctx, client, build.BuilderPodNamespace())
+			podSecurityContextConstrained, _ := openshift.GetOpenshiftPodSecurityContextRestricted(ctx, client, build.Namespace)
 			if podSecurityContextConstrained != nil {
 				podSecurityContext = podSecurityContextConstrained
 			}
 		}
 	}
 	pod := &corev1.Pod{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: corev1.SchemeGroupVersion.String(),
-			Kind:       "Pod",
+		APIVersion: corev1.SchemeGroupVersion.String(),
+		Kind:       "Pod",
+		Namespace:  build.Namespace,
+		Name:       buildPodName(build),
+		Labels: map[string]string{
+			"camel.apache.org/build":     build.Name,
+			"camel.apache.org/component": "builder",
 		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: build.BuilderPodNamespace(),
-			Name:      buildPodName(build),
-			Labels: map[string]string{
-				"camel.apache.org/build":     build.Name,
-				"camel.apache.org/component": "builder",
-			},
-			Annotations: build.BuilderConfiguration().Annotations,
-		},
+		Annotations: build.BuilderConfiguration().Annotations,
 		Spec: corev1.PodSpec{
 			ServiceAccountName: platform.BuilderServiceAccount,
 			RestartPolicy:      corev1.RestartPolicyNever,
 			SecurityContext:    podSecurityContext,
 			NodeSelector:       build.BuilderConfiguration().NodeSelector,
+			EnableServiceLinks: new(bool),
 		},
 	}
 
@@ -84,19 +81,19 @@ func newBuildPod(ctx context.Context, client client.Client, build *v1.Build) *co
 		switch {
 		// Builder task
 		case task.Builder != nil:
-			addBuildTaskToPod(ctx, client, build, task.Builder.Name, pod)
+			addBuildTaskToPod(ctx, client, build, task.Builder.Name, "", pod)
 		// Custom task
 		case task.Custom != nil:
 			addCustomTaskToPod(build, task.Custom, pod)
 		// Package task
 		// It's a type of builder task, we can reuse the same type
 		case task.Package != nil:
-			addBuildTaskToPod(ctx, client, build, task.Package.Name, pod)
+			addBuildTaskToPod(ctx, client, build, task.Package.Name, "", pod)
 		//nolint:staticcheck
 		case task.S2i != nil:
-			addBuildTaskToPod(ctx, client, build, task.S2i.Name, pod)
+			addBuildTaskToPod(ctx, client, build, task.S2i.Name, "", pod)
 		case task.Jib != nil:
-			addBuildTaskToPod(ctx, client, build, task.Jib.Name, pod)
+			addBuildTaskToPod(ctx, client, build, task.Jib.Name, task.Jib.Registry.Secret, pod)
 		}
 	}
 
@@ -146,14 +143,10 @@ func configureResources(taskName string, build *v1.Build, container *corev1.Cont
 
 func deleteBuilderPod(ctx context.Context, c ctrl.Writer, build *v1.Build) error {
 	pod := corev1.Pod{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: corev1.SchemeGroupVersion.String(),
-			Kind:       "Pod",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: build.BuilderPodNamespace(),
-			Name:      buildPodName(build),
-		},
+		APIVersion: corev1.SchemeGroupVersion.String(),
+		Kind:       "Pod",
+		Namespace:  build.Namespace,
+		Name:       buildPodName(build),
 	}
 
 	err := c.Delete(ctx, &pod)
@@ -166,7 +159,7 @@ func deleteBuilderPod(ctx context.Context, c ctrl.Writer, build *v1.Build) error
 
 func getBuilderPod(ctx context.Context, c ctrl.Reader, build *v1.Build) (*corev1.Pod, error) {
 	pod := corev1.Pod{}
-	err := c.Get(ctx, ctrl.ObjectKey{Namespace: build.BuilderPodNamespace(), Name: buildPodName(build)}, &pod)
+	err := c.Get(ctx, ctrl.ObjectKey{Namespace: build.Namespace, Name: buildPodName(build)}, &pod)
 	if err != nil && k8serrors.IsNotFound(err) {
 		return nil, nil
 	}
@@ -181,15 +174,13 @@ func buildPodName(build *v1.Build) string {
 	return "camel-k-" + build.Name + "-builder"
 }
 
-func addBuildTaskToPod(ctx context.Context, client client.Client, build *v1.Build, taskName string, pod *corev1.Pod) {
+func addBuildTaskToPod(ctx context.Context, client client.Client, build *v1.Build, taskName, registrySecretName string, pod *corev1.Pod) {
 	if !hasVolume(pod, builderVolume) {
 		pod.Spec.Volumes = append(pod.Spec.Volumes,
 			// EmptyDir volume used to share the build state across tasks
 			corev1.Volume{
-				Name: builderVolume,
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{},
-				},
+				Name:     builderVolume,
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
 		)
 	}
@@ -201,6 +192,21 @@ func addBuildTaskToPod(ctx context.Context, client client.Client, build *v1.Buil
 			Value: filepath.Join(builderDir, build.Name),
 		},
 	)
+
+	// If there is a registry secret configured, we need to include the related env var
+	if registrySecretName != "" {
+		envVars = append(envVars,
+			corev1.EnvVar{
+				Name: registry.RegistrySecretConfEnvVar,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						Name: registrySecretName,
+						Key:  registry.RegistryDockerConfFilename,
+					},
+				},
+			},
+		)
+	}
 
 	container := corev1.Container{
 		Name:            taskName,
@@ -222,7 +228,7 @@ func addBuildTaskToPod(ctx context.Context, client client.Client, build *v1.Buil
 
 	// get security context from security context constraint configuration in namespace
 	if taskName == "s2i" {
-		securityContextConstrained, _ := openshift.GetOpenshiftSecurityContextRestricted(ctx, client, build.BuilderPodNamespace())
+		securityContextConstrained, _ := openshift.GetOpenshiftSecurityContextRestricted(ctx, client, build.Namespace)
 		if securityContextConstrained != nil {
 			container.SecurityContext = securityContextConstrained
 		}

@@ -29,10 +29,12 @@ import (
 	"github.com/apache/camel-k/v2/pkg/util/boolean"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/v2/pkg/builder"
+	"github.com/apache/camel-k/v2/pkg/platform"
 	mvn "github.com/apache/camel-k/v2/pkg/util/maven"
 	"github.com/apache/camel-k/v2/pkg/util/property"
 )
@@ -40,6 +42,8 @@ import (
 const (
 	builderTraitID    = "builder"
 	builderTraitOrder = 600
+
+	quarkusNativeTaskName = "quarkus-native"
 )
 
 var commandsRegexp = regexp.MustCompile(`"[^"]+"|[\w/-]+`)
@@ -47,6 +51,9 @@ var commandsRegexp = regexp.MustCompile(`"[^"]+"|[\w/-]+`)
 type builderTrait struct {
 	BasePlatformTrait
 	traitv1.BuilderTrait `property:",squash"`
+
+	// no task when empty
+	quarkusNativeTask string
 }
 
 func newBuilderTrait() Trait {
@@ -60,6 +67,7 @@ func (t *builderTrait) InfluencesKit() bool {
 	return true
 }
 
+//nolint:staticcheck
 func (t *builderTrait) Matches(trait Trait) bool {
 	otherTrait, ok := trait.(*builderTrait)
 	if !ok {
@@ -133,22 +141,22 @@ func (t *builderTrait) configureForQuarkus(trait Trait, e *Environment, conditio
 			nativeBuilderImage = strings.ReplaceAll(nativeBuilderImage, "jdk-21", "jdk-25")
 		}
 
-		// it should be performed as the last custom task
-		t.Tasks = append(t.Tasks, fmt.Sprintf(`quarkus-native;%s;/bin/bash -c "%s"`, nativeBuilderImage, command))
 		// Force the build to run in a separate Pod and strictly sequential
-		m := "This is a Quarkus native build: setting build configuration with build Pod strategy and native container sensible resources (if not specified by the user). Make sure your cluster can handle it."
+		m := "This is a Quarkus native build: setting build configuration with build Pod strategy and native container sensible resources " +
+			"(if not specified by the user). Make sure your cluster can handle it."
 		t.L.Info(m)
-
 		condition = newOrAppend(condition, m)
 		t.Strategy = string(v1.BuildStrategyPod)
 		t.OrderStrategy = string(v1.BuildOrderStrategySequential)
 
-		if !existsTaskRequest(t.TasksRequestCPU, "quarkus-native") {
-			t.TasksRequestCPU = append(t.TasksRequestCPU, "quarkus-native:1000m")
+		if !existsTaskRequest(t.TasksRequestCPU, quarkusNativeTaskName) {
+			t.TasksRequestCPU = append(t.TasksRequestCPU, quarkusNativeTaskName+":1000m")
 		}
-		if !existsTaskRequest(t.TasksRequestMemory, "quarkus-native") {
-			t.TasksRequestMemory = append(t.TasksRequestMemory, "quarkus-native:4Gi")
+		if !existsTaskRequest(t.TasksRequestMemory, quarkusNativeTaskName) {
+			t.TasksRequestMemory = append(t.TasksRequestMemory, quarkusNativeTaskName+":4Gi")
 		}
+
+		t.quarkusNativeTask = fmt.Sprintf(`%s;%s;/bin/bash -c "%s"`, quarkusNativeTaskName, nativeBuilderImage, command)
 	}
 
 	return condition, nil
@@ -238,21 +246,36 @@ func (t *builderTrait) Apply(e *Environment) error {
 
 		return nil
 	}
-	builderTask.Configuration.NodeSelector = t.NodeSelector
+	builderTask.Configuration.NodeSelector = t.filterNodeSelector()
 	builderTask.Configuration.Annotations = t.Annotations
 	pipelineTasks = append(pipelineTasks, v1.Task{Builder: builderTask})
 
 	// Custom tasks
-	if t.Tasks != nil {
-		ct, err := t.determineCustomTasks(e, builderTask, tasksConf)
+	//nolint:staticcheck,nestif
+	if platform.BuilderTasksEnabled() {
+		if len(t.Tasks) > 0 {
+			ct, err := t.determineCustomTasks(e, builderTask, tasksConf)
+			if err != nil {
+				return err
+			}
+			if ct == nil {
+				return nil
+			}
+			pipelineTasks = append(pipelineTasks, ct...)
+		}
+	} else {
+		if len(t.Tasks) > 0 {
+			t.L.Info("Custom tasks are disabled by operator configuration: the tasks will be ignored")
+		}
+		// Useful to report in status no custom task was executed
+		t.Tasks = []string{}
+	}
+	if t.quarkusNativeTask != "" {
+		quarkusNativeTask, err := parseTask(t.quarkusNativeTask, tasksConf, imageName)
 		if err != nil {
 			return err
 		}
-		if ct == nil {
-			return nil
-		}
-
-		pipelineTasks = append(pipelineTasks, ct...)
+		pipelineTasks = append(pipelineTasks, *quarkusNativeTask)
 	}
 
 	// Packaging task
@@ -268,15 +291,11 @@ func (t *builderTrait) Apply(e *Environment) error {
 	switch e.Platform.PublishStrategy {
 	case v1.IntegrationPlatformBuildPublishStrategyJib:
 		jibTask := v1.Task{Jib: &v1.JibTask{
-			BaseTask: v1.BaseTask{
-				Name:          "jib",
-				Configuration: *taskConfOrDefault(tasksConf, "jib"),
-			},
-			PublishTask: v1.PublishTask{
-				BaseImage: t.getBaseImage(e),
-				Image:     imageName,
-				Registry:  e.Platform.Registry,
-			},
+			Name:          "jib",
+			Configuration: *taskConfOrDefault(tasksConf, "jib"),
+			BaseImage:     t.getBaseImage(e),
+			Image:         imageName,
+			Registry:      e.Platform.Registry,
 		}}
 		if t.ImagePlatforms != nil {
 			jibTask.Jib.Configuration.ImagePlatforms = t.ImagePlatforms
@@ -285,19 +304,16 @@ func (t *builderTrait) Apply(e *Environment) error {
 	//nolint:staticcheck
 	case v1.IntegrationPlatformBuildPublishStrategyS2I:
 		pipelineTasks = append(pipelineTasks, v1.Task{S2i: &v1.S2iTask{
-			BaseTask: v1.BaseTask{
-				Name:          "s2i",
-				Configuration: *taskConfOrDefault(tasksConf, "s2i"),
-			},
-			PublishTask: v1.PublishTask{
-				BaseImage: t.getBaseImage(e),
-				Image:     imageName,
-			},
-			Tag: tag,
+			Name:          "s2i",
+			Configuration: *taskConfOrDefault(tasksConf, "s2i"),
+			BaseImage:     t.getBaseImage(e),
+			Image:         imageName,
+			Tag:           tag,
 		}})
 	}
 
 	// filter only those tasks required by the user
+	//nolint:staticcheck
 	if t.TasksFilter != "" {
 		flt := strings.Split(t.TasksFilter, ",")
 		if pipelineTasks, err = filter(pipelineTasks, flt); err != nil {
@@ -336,6 +352,10 @@ func failIntegrationKit(e *Environment, conditionType v1.IntegrationKitCondition
 	if e.IntegrationKit != nil {
 		e.IntegrationKit.Status.Phase = v1.IntegrationKitPhaseError
 		e.IntegrationKit.Status.SetCondition(conditionType, status, reason, message)
+		e.IntegrationKit.Status.Failure = &v1.Failure{
+			Reason: message,
+			Time:   metav1.Now(),
+		}
 		if err := e.Client.Status().Update(e.Ctx, e.IntegrationKit); err != nil {
 			return err
 		}
@@ -350,11 +370,17 @@ func (t *builderTrait) builderTask(e *Environment, taskConf *v1.BuildConfigurati
 	// Add Maven repositories defined in the IntegrationKit or Integration
 	if e.IntegrationKit != nil {
 		for _, repo := range e.IntegrationKit.Spec.Repositories {
+			if !platform.IsMavenRepoAllowed(repo) {
+				return nil, fmt.Errorf("maven repository %s is not allowed by the operator", repo)
+			}
 			maven.Repositories = append(maven.Repositories, mvn.NewRepository(repo))
 		}
 	}
 	if e.Integration != nil {
 		for _, repo := range e.Integration.Spec.Repositories {
+			if !platform.IsMavenRepoAllowed(repo) {
+				return nil, fmt.Errorf("maven repository %s is not allowed by the operator", repo)
+			}
 			maven.Repositories = append(maven.Repositories, mvn.NewRepository(repo))
 		}
 	}
@@ -402,14 +428,12 @@ func (t *builderTrait) builderTask(e *Environment, taskConf *v1.BuildConfigurati
 	dependencies := getDependencies(e)
 
 	task := &v1.BuilderTask{
-		BaseTask: v1.BaseTask{
-			Name:          "builder",
-			Configuration: *taskConf,
-		},
-		BaseImage:    t.getBaseImage(e),
-		Runtime:      e.CamelCatalog.Runtime,
-		Dependencies: dependencies,
-		Maven:        maven,
+		Name:          "builder",
+		Configuration: *taskConf,
+		BaseImage:     t.getBaseImage(e),
+		Runtime:       e.CamelCatalog.Runtime,
+		Dependencies:  dependencies,
+		Maven:         maven,
 	}
 
 	if e.Integration != nil && e.Integration.Spec.Git != nil {
@@ -438,21 +462,6 @@ func (t *builderTrait) builderTask(e *Environment, taskConf *v1.BuildConfigurati
 		for _, cp := range e.CamelCatalog.Runtime.Capabilities["master"].BuildTimeProperties {
 			task.Maven.Properties[CapabilityPropertyKey(cp.Key, task.Maven.Properties)] = cp.Value
 		}
-	}
-
-	// User provides a maven profile
-	if t.MavenProfiles != nil {
-		mavenProfiles := make([]v1.ValueSource, 0)
-		for _, v := range t.MavenProfiles {
-			if v != "" {
-				mavenProfile, err := v1.DecodeValueSource(v, "profile.xml")
-				if err != nil {
-					return nil, fmt.Errorf("invalid maven profile: %s: %w. ", v, err)
-				}
-				mavenProfiles = append(mavenProfiles, mavenProfile)
-			}
-		}
-		task.Maven.Profiles = mavenProfiles
 	}
 
 	steps := make([]builder.Step, 0, len(builder.Project.CommonSteps))
@@ -509,6 +518,7 @@ func (t *builderTrait) determineCustomTasks(e *Environment, builderTask *v1.Buil
 		realBuildStrategy = e.Platform.BuildConfiguration.Strategy
 	}
 
+	//nolint:staticcheck
 	if len(t.Tasks) > 0 && realBuildStrategy != v1.BuildStrategyPod {
 		err := failIntegrationKit(
 			e,
@@ -531,35 +541,46 @@ func (t *builderTrait) determineCustomTasks(e *Environment, builderTask *v1.Buil
 }
 
 // the format expected is "<task-name>;<task-image>;<task-container-command>[;<task-container-user-id>]".
+//
+// Deprecated: will be removed in future versions.
 func (t *builderTrait) customTasks(tasksConf map[string]*v1.BuildConfiguration, imageName string) ([]v1.Task, error) {
 	customTasks := make([]v1.Task, len(t.Tasks))
 
 	for i, t := range t.Tasks {
-		splitted := strings.Split(t, ";")
-		if len(splitted) < 3 {
-			return nil, fmt.Errorf(`provide a custom task with at least 3 arguments, ie "my-task-name;my-image;echo 'hello'", was %v`, t)
+		parsedTask, err := parseTask(t, tasksConf, imageName)
+		if err != nil {
+			return nil, err
 		}
-		customTasks[i] = v1.Task{
-			Custom: &v1.UserTask{
-				BaseTask: v1.BaseTask{
-					Name:          splitted[0],
-					Configuration: *taskConfOrDefault(tasksConf, splitted[0]),
-				},
-				PublishingImage:   imageName,
-				ContainerImage:    splitted[1],
-				ContainerCommands: splitContainerCommand(splitted[2]),
-			},
-		}
-		if len(splitted) > 3 {
-			uid, err := strconv.ParseInt(splitted[3], 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf(`provide a custom task with a correct numeric user id, was %v`, splitted[3])
-			}
-			customTasks[i].Custom.ContainerUserID = &uid
-		}
+
+		customTasks[i] = *parsedTask
 	}
 
 	return customTasks, nil
+}
+
+func parseTask(task string, tasksConf map[string]*v1.BuildConfiguration, imageName string) (*v1.Task, error) {
+	splitted := strings.Split(task, ";")
+	if len(splitted) < 3 {
+		return nil, fmt.Errorf(`provide a custom task with at least 3 arguments, ie "my-task-name;my-image;echo 'hello'", was %v`, task)
+	}
+	parsedTask := v1.Task{
+		Custom: &v1.UserTask{
+			Name:              splitted[0],
+			Configuration:     *taskConfOrDefault(tasksConf, splitted[0]),
+			PublishingImage:   imageName,
+			ContainerImage:    splitted[1],
+			ContainerCommands: splitContainerCommand(splitted[2]),
+		},
+	}
+	if len(splitted) > 3 {
+		uid, err := strconv.ParseInt(splitted[3], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf(`provide a custom task with a correct numeric user id, was %v`, splitted[3])
+		}
+		parsedTask.Custom.ContainerUserID = &uid
+	}
+
+	return &parsedTask, nil
 }
 
 func taskConfOrDefault(tasksConf map[string]*v1.BuildConfiguration, taskName string) *v1.BuildConfiguration {
@@ -703,4 +724,31 @@ func (t *builderTrait) setPlatform(e *Environment) {
 			t.ImagePlatforms = e.Platform.BuildConfiguration.ImagePlatforms
 		}
 	}
+}
+
+// filterNodeSelector returns the node selector map after applying the operator-level allow list.
+// If BUILDER_NODE_SELECTOR_ALLOWED_LABELS is empty/unset all keys are accepted (backward compatible).
+// Otherwise only keys present in the allow list are retained; every dropped key is logged at info level.
+func (t *builderTrait) filterNodeSelector() map[string]string {
+	if len(t.NodeSelector) == 0 {
+		return t.NodeSelector
+	}
+
+	allowList := platform.BuilderNodeSelectorAllowList()
+	if len(allowList) == 0 {
+		// no restriction configured – accept everything
+		return t.NodeSelector
+	}
+
+	filtered := make(map[string]string, len(t.NodeSelector))
+	for k, v := range t.NodeSelector {
+		if slices.Contains(allowList, k) {
+			filtered[k] = v
+		} else {
+			t.L.Info("builder.nodeSelector key is not in the allowed list and will be ignored",
+				"key", k, "allowedKeys", allowList)
+		}
+	}
+
+	return filtered
 }

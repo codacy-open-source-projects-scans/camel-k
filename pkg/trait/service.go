@@ -24,7 +24,6 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 
@@ -34,6 +33,7 @@ import (
 )
 
 const (
+	serviceKind       = "Service"
 	serviceTraitID    = "service"
 	serviceTraitOrder = 1500
 )
@@ -65,7 +65,7 @@ func (t *serviceTrait) Configure(e *Environment) (bool, *TraitCondition, error) 
 	}
 	if !ptr.Deref(t.Enabled, true) {
 		return false, NewIntegrationCondition(
-			"Service",
+			serviceKind,
 			v1.IntegrationConditionServiceAvailable,
 			corev1.ConditionFalse,
 			v1.IntegrationConditionServiceNotAvailableReason,
@@ -77,7 +77,7 @@ func (t *serviceTrait) Configure(e *Environment) (bool, *TraitCondition, error) 
 	if e.GetTrait(knativeServiceTraitID) != nil {
 		knativeServiceTrait, _ := e.GetTrait(knativeServiceTraitID).(*knativeServiceTrait)
 		if ptr.Deref(knativeServiceTrait.Enabled, true) {
-			return false, NewIntegrationConditionPlatformDisabledWithMessage("Service", "knative-service trait has priority over this trait"), nil
+			return false, NewIntegrationConditionPlatformDisabledWithMessage(serviceKind, "knative-service trait has priority over this trait"), nil
 		}
 	}
 
@@ -85,6 +85,7 @@ func (t *serviceTrait) Configure(e *Environment) (bool, *TraitCondition, error) 
 		return false, nil, nil
 	}
 
+	enabled := ptr.Deref(t.Enabled, false)
 	if ptr.Deref(t.Auto, true) {
 		exposeHTTPServices, err := e.ConsumeMeta(false, func(meta metadata.IntegrationMetadata) bool {
 			return meta.ExposesHTTPServices
@@ -92,7 +93,7 @@ func (t *serviceTrait) Configure(e *Environment) (bool, *TraitCondition, error) 
 		var condition *TraitCondition
 		if err != nil {
 			condition = NewIntegrationCondition(
-				"Service",
+				serviceKind,
 				v1.IntegrationConditionServiceAvailable,
 				corev1.ConditionFalse,
 				v1.IntegrationConditionServiceNotAvailableReason,
@@ -102,7 +103,7 @@ func (t *serviceTrait) Configure(e *Environment) (bool, *TraitCondition, error) 
 			return false, condition, err
 		}
 
-		t.Enabled = ptr.To(exposeHTTPServices)
+		enabled = exposeHTTPServices
 	}
 
 	servicePorts, err := t.parseServicePorts()
@@ -111,7 +112,7 @@ func (t *serviceTrait) Configure(e *Environment) (bool, *TraitCondition, error) 
 	}
 	t.servicePorts = servicePorts
 
-	return ptr.Deref(t.Enabled, false) || len(t.servicePorts) > 0, nil, nil
+	return enabled || len(t.servicePorts) > 0, nil, nil
 }
 
 func (t *serviceTrait) Apply(e *Environment) error {
@@ -151,16 +152,12 @@ func (t *serviceTrait) getServiceFor(itName, itNamespace string) *corev1.Service
 	ports := t.getServicePorts()
 
 	return &corev1.Service{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Service",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        itName,
-			Namespace:   itNamespace,
-			Labels:      labels,
-			Annotations: t.Annotations,
-		},
+		Kind:        "Service",
+		APIVersion:  "v1",
+		Name:        itName,
+		Namespace:   itNamespace,
+		Labels:      labels,
+		Annotations: t.Annotations,
 		Spec: corev1.ServiceSpec{
 			Ports: ports,
 			Selector: map[string]string{

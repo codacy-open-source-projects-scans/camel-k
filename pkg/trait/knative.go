@@ -36,11 +36,10 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
-	eventing "knative.dev/eventing/pkg/apis/eventing/v1"
-	serving "knative.dev/serving/pkg/apis/serving/v1"
-
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	eventing "github.com/apache/camel-k/v2/pkg/apis/duck/knative/eventing/v1"
+	serving "github.com/apache/camel-k/v2/pkg/apis/duck/knative/serving/v1"
 	knativeapi "github.com/apache/camel-k/v2/pkg/internal/knative"
 	"github.com/apache/camel-k/v2/pkg/metadata"
 	"github.com/apache/camel-k/v2/pkg/util"
@@ -67,6 +66,8 @@ func newKnativeTrait() Trait {
 }
 
 // IsAllowedInProfile overrides default.
+//
+//nolint:staticcheck
 func (t *knativeTrait) IsAllowedInProfile(profile v1.TraitProfile) bool {
 	return profile.Equal(v1.TraitProfileKnative)
 }
@@ -113,7 +114,7 @@ func (t *knativeTrait) Configure(e *Environment) (bool, *TraitCondition, error) 
 		hasKnativeEndpoint := len(t.ChannelSources) > 0 || len(t.ChannelSinks) > 0 ||
 			len(t.EndpointSources) > 0 || len(t.EndpointSinks) > 0 ||
 			len(t.EventSources) > 0 || len(t.EventSinks) > 0
-		t.Enabled = ptr.To(hasKnativeEndpoint)
+		t.Enabled = new(hasKnativeEndpoint)
 	}
 
 	if ptr.Deref(t.Enabled, false) {
@@ -138,7 +139,16 @@ func (t *knativeTrait) Configure(e *Environment) (bool, *TraitCondition, error) 
 		}
 	}
 
-	return ptr.Deref(t.Enabled, false), nil, nil
+	condition := NewIntegrationCondition(
+		"Knative",
+		v1.IntegrationConditionTraitInfo,
+		corev1.ConditionTrue,
+		TraitConfigurationReason,
+		"Knative (eventing) trait is deprecated and may be removed in future versions. "+
+			"Use Camel Knative component instead.",
+	)
+
+	return ptr.Deref(t.Enabled, false), condition, nil
 }
 
 func filterMetaItems(meta metadata.IntegrationMetadata, cst knativeapi.CamelServiceType, uriType string) []string {

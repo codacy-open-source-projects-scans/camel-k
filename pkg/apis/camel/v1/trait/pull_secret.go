@@ -17,16 +17,11 @@ limitations under the License.
 
 package trait
 
-// The Pull Secret trait sets a pull secret on the pod,
-// to allow Kubernetes to retrieve the container image from an external registry.
+// The Pull Secret trait sets a pull secret on the pod to allow Kubernetes to retrieve
+// the container image from an external registry.
 //
-// The pull secret can be specified manually or, in case you've configured authentication for an external container registry
-// on the `IntegrationPlatform`, the same secret is used to pull images.
-//
-// It's enabled by default whenever you configure authentication for an external container registry,
-// so it assumes that external registries are private.
-//
-// If your registry does not need authentication for pulling images, you can disable this trait.
+// In a production environment it is highly advisable to provide such authentication
+// and ensure the secret exists in the Integration namespace.
 //
 // +camel-k:trait=pull-secret.
 //
@@ -34,9 +29,12 @@ package trait
 type PullSecretTrait struct {
 	Trait `json:",inline" property:",squash"`
 
-	// The pull secret name to set on the Pod. If left empty this is automatically taken from the `IntegrationPlatform` registry configuration.
+	// The pull secret name to set on the Pod.
 	SecretName string `json:"secretName,omitempty" property:"secret-name"`
-	// When using a global operator with a shared platform, this enables delegation of the `system:image-puller` cluster role on the operator namespace to the integration service account.
+	// When using a global operator with a shared platform, this enables delegation of the `system:image-puller`
+	// cluster role on the operator namespace to the integration service account.
+	//
+	// Deprecated: may be removed in future releases.
 	ImagePullerDelegation *bool `json:"imagePullerDelegation,omitempty" property:"image-puller-delegation"`
 	// Automatically configures the platform registry secret on the pod if it is of type `kubernetes.io/dockerconfigjson`.
 	Auto *bool `json:"auto,omitempty" property:"auto"`

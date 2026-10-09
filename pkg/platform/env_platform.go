@@ -21,8 +21,10 @@ import (
 	"errors"
 	"os"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
@@ -35,37 +37,49 @@ import (
 // Used to check runtime architecture.
 var operatorArch = runtime.GOARCH
 
-// SingletonPlatform is initialized once for performance reasons when the application starts.
-var SingletonPlatform = getEnvPlatform()
+// singletonPlatform is initialized once for performance reasons when the application starts.
+// The operator process should be in charge to initialize.
+var singletonPlatform Platform
+
+var logOnce sync.Map // map[string]*sync.Once
 
 // Platform contains a series of configuration required during build and packaging.
 type Platform struct {
-	CatalogNamespace    string
-	BuildRuntimeVersion string
-	BuildTimeout        time.Duration
-	BuildConfiguration  v1.BuildConfiguration
-	BuildBaseImage      string
-	PublishStrategy     v1.IntegrationPlatformBuildPublishStrategy
-	Registry            v1.RegistrySpec
-	Maven               v1.MavenBuildSpec
-	MaxRunningBuilds    int32
+	CatalogNamespace     string
+	BuildRuntimeVersion  string
+	BuildRuntimeProvider v1.RuntimeProvider
+	BuildTimeout         time.Duration
+	BuildConfiguration   v1.BuildConfiguration
+	BuildBaseImage       string
+	PublishStrategy      v1.IntegrationPlatformBuildPublishStrategy
+	Registry             v1.RegistrySpec
+	Maven                v1.MavenBuildSpec
+	MaxRunningBuilds     int32
 }
 
-// getEnvPlatform is in charge to parse the environment variables of the operator and return the Platform object.
-func getEnvPlatform() Platform {
-	registry := registry()
-	// The operator will eventually try to get the registry address from a service, if provided
-	if registry.Address == "" && GetEnvOrDefault("REGISTRY_SVC_NAME", "") == "" {
-		// TODO: fail fast exiting the program when we don't support IntegrationPlatform.
-		log.Info("failed to initialize singleton platform from environment variables: missing mandatory env var REGISTRY_ADDRESS or " +
-			"REGISTRY_SVC_NAME (and REGISTRY_SVC_NAMESPACE). " +
-			"Mind that this will be required when we stop supporting IntegrationPlatform in future releases.")
+func (p *Platform) DeepCopy() *Platform {
+	if p == nil {
+		return nil
 	}
 
-	return Platform{
-		CatalogNamespace:    GetOperatorNamespace(),
-		BuildRuntimeVersion: GetEnvOrDefault("BUILD_RUNTIME_VERSION", defaults.DefaultRuntimeVersion),
-		BuildTimeout:        buildTimeout(),
+	out := *p
+
+	out.BuildConfiguration = *p.BuildConfiguration.DeepCopy()
+	out.Registry = *p.Registry.DeepCopy()
+	out.Maven = *p.Maven.DeepCopy()
+
+	return &out
+}
+
+// InitPlatform is in charge to parse the environment variables of the operator and initialize the environment Platform.
+func InitPlatform() {
+	registry := registry()
+
+	singletonPlatform = Platform{
+		CatalogNamespace:     GetOperatorNamespace(),
+		BuildRuntimeVersion:  GetEnvOrDefault("BUILD_RUNTIME_VERSION", defaults.DefaultRuntimeVersion),
+		BuildRuntimeProvider: v1.RuntimeProvider(GetEnvOrDefault("BUILD_RUNTIME_PROVIDER", defaults.DefaultRuntimeProvider)),
+		BuildTimeout:         buildTimeout(),
 		BuildConfiguration: v1.BuildConfiguration{
 			Strategy:       buildStrategy(),
 			OrderStrategy:  orderStrategy(),
@@ -171,6 +185,77 @@ func publishStrategy() v1.IntegrationPlatformBuildPublishStrategy {
 	return DefaultPublishStrategy
 }
 
+// TolerationTaintsAllowList returns the list of taint keys that are allowed to be used in
+// toleration.taints. When the list is empty (TOLERATION_TAINTS_ALLOWED_KEYS is unset or blank),
+// any key is permitted. When the list is non-empty only taints whose key is in the list are
+// accepted; others are dropped and an info message is logged by the trait.
+func TolerationTaintsAllowList() []string {
+	raw := GetEnvOrDefault("TOLERATION_TAINTS_ALLOWED_KEYS", "")
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+
+	return result
+}
+
+// AffinityNodeLabelsAllowList returns the list of label keys that are allowed to be used in
+// affinity.nodeAffinityLabels. When the list is empty (AFFINITY_NODE_LABELS_ALLOWED_KEYS is
+// unset or blank), any key is permitted. When the list is non-empty only expressions whose
+// keys are in the list are accepted; others are dropped and an info message is logged by the trait.
+func AffinityNodeLabelsAllowList() []string {
+	raw := GetEnvOrDefault("AFFINITY_NODE_LABELS_ALLOWED_KEYS", "")
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+
+	return result
+}
+
+// BuilderTasksEnabled reports whether CR authors are permitted to inject custom pipeline tasks
+// via the builder.tasks trait. Controlled by the BUILDER_TASKS_ENABLED operator environment
+// variable (default false). Set to "false" to prevent custom task
+// injection across all integrations managed by this operator.
+func BuilderTasksEnabled() bool {
+	return strings.ToLower(strings.TrimSpace(GetEnvOrDefault("BUILDER_TASKS_ENABLED", "false"))) == "true"
+}
+
+// BuilderNodeSelectorAllowList returns the list of node-selector keys that are allowed to be set
+// by the builder trait. When the list is empty (BUILDER_NODE_SELECTOR_ALLOWED_LABELS is unset or blank),
+// any key is permitted. When the list is non-empty only the listed keys are accepted; unlisted keys
+// are dropped; an info message is logged by the trait.
+func BuilderNodeSelectorAllowList() []string {
+	raw := GetEnvOrDefault("BUILDER_NODE_SELECTOR_ALLOWED_LABELS", "")
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+
+	return result
+}
+
 func imagePlatforms() []string {
 	buildImagePlatforms := GetEnvOrDefault("BUILD_IMAGE_PLATFORMS", "")
 	if buildImagePlatforms != "" {
@@ -191,7 +276,7 @@ func registry() v1.RegistrySpec {
 	insecure, err := strconv.ParseBool(GetEnvOrDefault("REGISTRY_INSECURE", "false"))
 	if err != nil {
 		insecure = false
-		log.Error(err, "could not parse REGISTRY_INSECURE environment variable, fallback to true")
+		log.Error(err, "could not parse REGISTRY_INSECURE environment variable, fallback to false")
 	}
 	registry := v1.RegistrySpec{
 		Insecure:     insecure,
@@ -206,22 +291,25 @@ func registry() v1.RegistrySpec {
 
 func repositories() []v1.Repository {
 	csvRepos := GetEnvOrDefault("MAVEN_REPOSITORIES", "")
-	if csvRepos != "" {
-		parts := strings.Split(csvRepos, ",")
+	if csvRepos == "" {
+		return nil
+	}
+	parts := strings.Split(csvRepos, ",")
 
-		repositories := make([]v1.Repository, 0, len(parts))
-		for _, repo := range parts {
-			repo = strings.TrimSpace(repo)
-			if repo == "" {
-				continue
-			}
-			repositories = append(repositories, maven.NewRepository(repo))
+	return splitRepositories(parts)
+}
+
+func splitRepositories(repos []string) []v1.Repository {
+	repositories := make([]v1.Repository, 0, len(repos))
+	for _, repo := range repos {
+		repo = strings.TrimSpace(repo)
+		if repo == "" {
+			continue
 		}
-
-		return repositories
+		repositories = append(repositories, maven.NewRepository(repo))
 	}
 
-	return nil
+	return repositories
 }
 
 func mavenSpec() v1.MavenSpec {
@@ -266,17 +354,13 @@ func valueSource(envName string) (v1.ValueSource, error) {
 		switch kind {
 		case "configmap":
 			valueSource.ConfigMapKeyRef = &corev1.ConfigMapKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: name,
-				},
-				Key: key,
+				Name: name,
+				Key:  key,
 			}
 		case "secret":
 			valueSource.SecretKeyRef = &corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: name,
-				},
-				Key: key,
+				Name: name,
+				Key:  key,
 			}
 		default:
 			return valueSource, errors.New("invalid value source format: unsupported " + kind)
@@ -300,10 +384,8 @@ func caSecrets() []corev1.SecretKeySelector {
 				continue
 			}
 			caSecrets = append(caSecrets, corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: subparts[0],
-				},
-				Key: subparts[1],
+				Name: subparts[0],
+				Key:  subparts[1],
 			})
 		}
 	}
@@ -311,8 +393,36 @@ func caSecrets() []corev1.SecretKeySelector {
 	return caSecrets
 }
 
+// GetPlatform is in charge to return a Platform based on priority:
+// 1. From IntegrationPlatform
+// 2. From IntegrationProfile
+// 3. From default environment variable setting
+//
 //nolint:staticcheck
-func FromIntegrationPlatform(itp *v1.IntegrationPlatform) Platform {
+func GetPlatform(itp *v1.IntegrationPlatform, itpr *v1.IntegrationProfile) Platform {
+	if itp != nil {
+		return fromIntegrationPlatform(itp)
+	}
+
+	if itpr != nil {
+		return fromIntegrationProfile(itpr)
+	}
+
+	return getDefaultPlatform()
+}
+
+//nolint:staticcheck
+func fromIntegrationPlatform(itp *v1.IntegrationPlatform) Platform {
+	key := itp.Namespace + "/" + itp.Name
+	once, _ := logOnce.LoadOrStore(key, &sync.Once{})
+	o, ok := once.(*sync.Once)
+	if ok {
+		o.Do(func() {
+			log.Info("The operator detected the presence of a DEPRECATED IntegrationPlatform resource (" +
+				itp.Namespace + "/" + itp.Name + "). You need to remove it and replace any configuration with environment variables instead")
+		})
+	}
+
 	return Platform{
 		CatalogNamespace:    itp.GetNamespace(),
 		BuildRuntimeVersion: itp.Status.Build.RuntimeVersion,
@@ -326,4 +436,61 @@ func FromIntegrationPlatform(itp *v1.IntegrationPlatform) Platform {
 		},
 		MaxRunningBuilds: itp.Status.Build.MaxRunningBuilds,
 	}
+}
+
+// IsMavenRepoAllowed is used to verify if a given maven repository can be used or not.
+func IsMavenRepoAllowed(mavenRepo string) bool {
+	csvRepos := GetEnvOrDefault("MAVEN_REPOSITORIES_ALLOWED", maven.DefaultMavenRepositories)
+	allowedRepos := strings.Split(csvRepos, ",")
+
+	return slices.Contains(allowedRepos, mavenRepo)
+}
+
+func fromIntegrationProfile(itpr *v1.IntegrationProfile) Platform {
+	// It uses as base the configuration coming from default. It adds on top of that
+	// those configuration overridden.
+	basePlatform := singletonPlatform.DeepCopy()
+
+	if itpr.Spec.Build.RuntimeProvider != "" {
+		basePlatform.BuildRuntimeProvider = itpr.Spec.Build.RuntimeProvider
+	}
+	if itpr.Spec.Build.RuntimeVersion != "" {
+		basePlatform.BuildRuntimeVersion = itpr.Spec.Build.RuntimeVersion
+	}
+	if itpr.Spec.Build.Timeout != nil {
+		basePlatform.BuildTimeout = itpr.Spec.Build.GetTimeout().Duration
+	}
+	if itpr.Spec.Build.BuildConfiguration.Strategy != "" {
+		basePlatform.BuildConfiguration.Strategy = itpr.Spec.Build.BuildConfiguration.Strategy
+	}
+	if itpr.Spec.Build.BuildConfiguration.OrderStrategy != "" {
+		basePlatform.BuildConfiguration.OrderStrategy = itpr.Spec.Build.BuildConfiguration.OrderStrategy
+	}
+	if itpr.Spec.Build.BuildConfiguration.ImagePlatforms != nil {
+		basePlatform.BuildConfiguration.ImagePlatforms = itpr.Spec.Build.BuildConfiguration.ImagePlatforms
+	}
+	if itpr.Spec.Build.BaseImage != "" {
+		basePlatform.BuildBaseImage = itpr.Spec.Build.BaseImage
+	}
+	if itpr.Spec.Build.PublishStrategy != "" {
+		basePlatform.PublishStrategy = itpr.Spec.Build.PublishStrategy
+	}
+	if itpr.Spec.Build.Registry != nil {
+		basePlatform.Registry = *itpr.Spec.Build.Registry
+	}
+	if itpr.Spec.Build.Maven != nil {
+		basePlatform.Maven.MavenSpec = *itpr.Spec.Build.Maven
+	}
+	if itpr.Spec.Build.Repositories != nil {
+		basePlatform.Maven.Repositories = splitRepositories(itpr.Spec.Build.Repositories)
+	}
+	if itpr.Spec.Build.MaxRunningBuilds > 0 {
+		basePlatform.MaxRunningBuilds = itpr.Spec.Build.MaxRunningBuilds
+	}
+
+	return *basePlatform
+}
+
+func getDefaultPlatform() Platform {
+	return singletonPlatform
 }

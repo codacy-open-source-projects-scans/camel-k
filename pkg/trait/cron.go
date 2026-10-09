@@ -91,9 +91,6 @@ func (t *cronTrait) Configure(e *Environment) (bool, *TraitCondition, error) {
 	if !ptr.Deref(t.Enabled, true) {
 		return false, NewIntegrationConditionUserDisabled("Cron"), nil
 	}
-	if e.Integration.IsSynthetic() {
-		return false, NewIntegrationConditionPlatformDisabledWithMessage("Cron", "synthetic integration"), nil
-	}
 	if !e.IntegrationInPhase(v1.IntegrationPhaseInitialization) && !e.IntegrationInRunningPhases() {
 		return false, nil, nil
 	}
@@ -145,7 +142,7 @@ func (t *cronTrait) Configure(e *Environment) (bool, *TraitCondition, error) {
 	}
 
 	if t.Schedule != "" {
-		t.Enabled = ptr.To(true)
+		t.Enabled = new(true)
 	}
 
 	return ptr.Deref(t.Enabled, false), nil, nil
@@ -177,7 +174,7 @@ func (t *cronTrait) autoConfigure(e *Environment) error {
 		}
 		for _, fromURI := range fromURIs {
 			if uri.GetComponent(fromURI) == genericCronComponent {
-				t.Fallback = ptr.To(true)
+				t.Fallback = new(true)
 
 				break
 			}
@@ -260,16 +257,12 @@ func (t *cronTrait) getCronJobFor(e *Environment) *batchv1.CronJob {
 		backoffLimit = *t.BackoffLimit
 	}
 	cronjob := batchv1.CronJob{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "CronJob",
-			APIVersion: batchv1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        e.Integration.Name,
-			Namespace:   e.Integration.Namespace,
-			Labels:      kubernetes.DeploymentLabels(e.Integration.Name),
-			Annotations: e.Integration.Annotations,
-		},
+		Kind:        "CronJob",
+		APIVersion:  batchv1.SchemeGroupVersion.String(),
+		Name:        e.Integration.Name,
+		Namespace:   e.Integration.Namespace,
+		Labels:      kubernetes.DeploymentLabels(e.Integration.Name),
+		Annotations: e.Integration.Annotations,
 		Spec: batchv1.CronJobSpec{
 			Schedule:                t.Schedule,
 			TimeZone:                t.TimeZone,

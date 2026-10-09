@@ -39,6 +39,7 @@ func TestKamelCLIDebug(t *testing.T) {
 
 	WithNewTestNamespace(t, func(ctx context.Context, g *WithT, ns string) {
 		InstallOperator(t, ctx, g, ns)
+		g.Eventually(OperatorPodPhase(t, ctx, ns)).Should(Equal(corev1.PodRunning))
 
 		t.Run("debug local default port check", func(t *testing.T) {
 			g.Expect(KamelRun(t, ctx, ns, "files/yaml.yaml").Execute()).To(Succeed())
@@ -50,7 +51,7 @@ func TestKamelCLIDebug(t *testing.T) {
 			go KamelWithContext(t, debugTestContext, "debug", "yaml", "-n", ns).ExecuteContext(debugTestContext)
 
 			g.Eventually(portIsInUse("127.0.0.1", "5005"), TestTimeoutMedium, 5*time.Second).Should(BeTrue())
-			g.Expect(Kamel(t, ctx, "delete", "--all", "-n", ns).Execute()).To(Succeed())
+			ExpectExecSucceed(t, g, Kubectl("delete", "it", "--all", "-n", ns))
 			g.Eventually(IntegrationPods(t, ctx, ns, "yaml"), TestTimeoutMedium, 5*time.Second).Should(HaveLen(0))
 		})
 
@@ -64,7 +65,7 @@ func TestKamelCLIDebug(t *testing.T) {
 			go KamelWithContext(t, debugTestContext, "debug", "yaml", "--port", "5006", "-n", ns).ExecuteContext(debugTestContext)
 
 			g.Eventually(portIsInUse("127.0.0.1", "5006"), TestTimeoutMedium, 5*time.Second).Should(BeTrue())
-			g.Expect(Kamel(t, ctx, "delete", "--all", "-n", ns).Execute()).To(Succeed())
+			ExpectExecSucceed(t, g, Kubectl("delete", "it", "--all", "-n", ns))
 			g.Eventually(IntegrationPods(t, ctx, ns, "yaml"), TestTimeoutMedium, 5*time.Second).Should(HaveLen(0))
 		})
 
@@ -77,7 +78,7 @@ func TestKamelCLIDebug(t *testing.T) {
 			go KamelWithContext(t, debugTestContext, "debug", "yaml", "-n", ns).ExecuteContext(debugTestContext)
 
 			g.Eventually(IntegrationLogs(t, ctx, ns, "yaml"), TestTimeoutMedium).Should(ContainSubstring("Listening for transport dt_socket at address: 5005"))
-			g.Expect(Kamel(t, ctx, "delete", "--all", "-n", ns).Execute()).To(Succeed())
+			ExpectExecSucceed(t, g, Kubectl("delete", "it", "--all", "-n", ns))
 			g.Eventually(IntegrationPods(t, ctx, ns, "yaml"), TestTimeoutMedium, 5*time.Second).Should(HaveLen(0))
 		})
 

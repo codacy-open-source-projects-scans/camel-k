@@ -176,13 +176,6 @@ func GetIntegrationProfileAnnotation(obj metav1.Object) string {
 	return GetAnnotation(IntegrationProfileAnnotation, obj)
 }
 
-// GetIntegrationProfileNamespaceAnnotation to safely get the integration profile namespace annotation value.
-//
-// Deprecated: won't be supported in future releases.
-func GetIntegrationProfileNamespaceAnnotation(obj metav1.Object) string {
-	return GetAnnotation(IntegrationProfileNamespaceAnnotation, obj)
-}
-
 // GetAnnotation safely get the annotation value.
 func GetAnnotation(name string, obj metav1.Object) string {
 	if obj == nil || obj.GetAnnotations() == nil {
@@ -238,20 +231,16 @@ func DecodeValueSource(input string, defaultKey string) (ValueSource, error) {
 		if sub[0] == "configmap" {
 			return ValueSource{
 				ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: sub[1],
-					},
-					Key: key,
+					Name: sub[1],
+					Key:  key,
 				},
 			}, nil
 		}
 		if sub[0] == "secret" {
 			return ValueSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: sub[1],
-					},
-					Key: key,
+					Name: sub[1],
+					Key:  key,
 				},
 			}, nil
 		}

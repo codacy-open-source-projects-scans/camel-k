@@ -27,7 +27,6 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
@@ -203,33 +202,40 @@ func (t *kameletsTrait) collectKamelets(e *Environment) (map[string]*v1.Kamelet,
 // calculateNamespaces is in charge to scan the kamelets specification and provide a list of
 // namespaces where to look for Kamelets.
 func (t *kameletsTrait) calculateNamespaces(e *Environment, defaultNamespaces ...string) ([]string, error) {
-	namespaces, err := calculateNamespaces(strings.Split(t.List, ","))
+	kamelets := strings.Split(t.List, ",")
+	namespaces, err := calculateNamespaces(kamelets)
 	if err != nil {
 		return namespaces, err
 	}
-	if len(namespaces) > 0 {
-		if e.Integration.Spec.ServiceAccountName == "" {
-			return nil, errors.New("you must to use an authorized ServiceAccount to access cross-namespace resources kamelets. " +
-				"Set it in the Integration spec accordingly")
+	if len(namespaces) > 0 && e.Integration.Spec.ServiceAccountName == "" {
+		return nil, errors.New("you must to use an authorized ServiceAccount to access cross-namespace resources kamelets. " +
+			"Set it in the Integration spec accordingly")
+	}
+	// verify an SA exists and it is authorized for each Kamelet
+	for _, kml := range kamelets {
+		ns, err := getKameletNamespace(kml)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse kamelet namespace: %w", err)
 		}
-		// verify an SA exists and it is authorized for Kamelets in that namespace
-		for _, ns := range namespaces {
-			ok, err := kubernetes.CheckServiceAccountPermission(
-				e.Ctx,
-				e.Client,
-				fmt.Sprintf("system:serviceaccount:%s:%s", e.Integration.Namespace, e.Integration.Spec.ServiceAccountName),
-				v1.SchemeGroupVersion.Group,
-				"kamelets",
-				ns,
-				"get",
-			)
-			if err != nil {
-				return nil, err
-			}
-			if !ok {
-				return nil, fmt.Errorf("cross-namespace Integration reference authorization denied for the ServiceAccount %s and resources kamelets",
-					e.Integration.Spec.ServiceAccountName)
-			}
+		if ns == "" {
+			continue
+		}
+		ok, err := kubernetes.CheckServiceAccountPermission(
+			e.Ctx,
+			e.Client,
+			fmt.Sprintf("system:serviceaccount:%s:%s", e.Integration.Namespace, e.Integration.Spec.ServiceAccountName),
+			v1.SchemeGroupVersion.Group,
+			"kamelets",
+			ns,
+			getKameletKey(kml),
+			"get",
+		)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("cross-namespace Integration reference authorization denied for the ServiceAccount %s and Kamelet %s in namespace %s",
+				e.Integration.Spec.ServiceAccountName, getKameletKey(kml), ns)
 		}
 	}
 
@@ -322,10 +328,8 @@ func (t *kameletsTrait) addKameletAsSource(e *Environment, kamelet *v1.Kamelet) 
 			return err
 		}
 		flowSource := v1.SourceSpec{
-			DataSpec: v1.DataSpec{
-				Name:    kamelet.Name + ".yaml",
-				Content: string(flowData),
-			},
+			Name:     kamelet.Name + ".yaml",
+			Content:  string(flowData),
 			Language: v1.LanguageYaml,
 		}
 		flowSource, err = integrationSourceFromKameletSource(e, kamelet, flowSource, fmt.Sprintf("%s-kamelet-%s-template", e.Integration.Name, kamelet.Name))
@@ -445,25 +449,21 @@ func integrationSourceFromKameletSource(e *Environment, kamelet *v1.Kamelet, sou
 
 func initializeConfigmapKameletSource(source v1.SourceSpec, hash, name, namespace, itName, kamName string) corev1.ConfigMap {
 	return corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ConfigMap",
-			APIVersion: "v1",
+		Kind:       "ConfigMap",
+		APIVersion: "v1",
+		Name:       name,
+		Namespace:  namespace,
+		Labels: map[string]string{
+			"camel.apache.org/integration": itName,
+			"camel.apache.org/kamelet":     kamName,
 		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels: map[string]string{
-				"camel.apache.org/integration": itName,
-				"camel.apache.org/kamelet":     kamName,
-			},
-			Annotations: map[string]string{
-				sourceLanguageAnnotation:            string(source.Language),
-				sourceNameAnnotation:                name,
-				sourceCompressionAnnotation:         strconv.FormatBool(source.Compression),
-				"camel.apache.org/source.generated": boolean.TrueString,
-				"camel.apache.org/source.type":      string(source.Type),
-				"camel.apache.org/source.digest":    hash,
-			},
+		Annotations: map[string]string{
+			sourceLanguageAnnotation:            string(source.Language),
+			sourceNameAnnotation:                name,
+			sourceCompressionAnnotation:         strconv.FormatBool(source.Compression),
+			"camel.apache.org/source.generated": boolean.TrueString,
+			"camel.apache.org/source.type":      string(source.Type),
+			"camel.apache.org/source.digest":    hash,
 		},
 		Data: map[string]string{
 			contentKey: source.Content,

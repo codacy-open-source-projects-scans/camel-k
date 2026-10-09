@@ -24,7 +24,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	serving "knative.dev/serving/pkg/apis/serving/v1"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -34,6 +33,7 @@ import (
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	serving "github.com/apache/camel-k/v2/pkg/apis/duck/knative/serving/v1"
 	"github.com/apache/camel-k/v2/pkg/internal"
 	"github.com/apache/camel-k/v2/pkg/platform"
 	"github.com/apache/camel-k/v2/pkg/util/camel"
@@ -65,9 +65,6 @@ func TestContainerWithDefaults(t *testing.T) {
 			},
 			Status: v1.IntegrationStatus{
 				Phase: v1.IntegrationPhaseDeploying,
-			},
-			Spec: v1.IntegrationSpec{
-				Profile: v1.TraitProfileKubernetes,
 			},
 		},
 		IntegrationKit: &v1.IntegrationKit{
@@ -132,9 +129,6 @@ func TestContainerWithOpenshift(t *testing.T) {
 			Status: v1.IntegrationStatus{
 				Phase: v1.IntegrationPhaseDeploying,
 			},
-			Spec: v1.IntegrationSpec{
-				Profile: v1.TraitProfileKubernetes,
-			},
 		},
 		IntegrationKit: &v1.IntegrationKit{
 			Status: v1.IntegrationKitStatus{
@@ -150,7 +144,7 @@ func TestContainerWithOpenshift(t *testing.T) {
 	conditions, traits, err := traitCatalog.apply(&environment)
 
 	require.NoError(t, err)
-	assert.NotEmpty(t, traits)
+	assert.Empty(t, traits)
 	assert.NotEmpty(t, conditions)
 	assert.NotEmpty(t, environment.ExecutedTraits)
 	assert.NotNil(t, environment.GetTrait("deployment"))
@@ -184,7 +178,6 @@ func TestContainerWithCustomName(t *testing.T) {
 				Phase: v1.IntegrationPhaseDeploying,
 			},
 			Spec: v1.IntegrationSpec{
-				Profile: v1.TraitProfileKubernetes,
 				Traits: v1.Traits{
 					Container: &traitv1.ContainerTrait{
 						Name: "my-container-name",
@@ -243,7 +236,6 @@ func TestContainerWithCustomImage(t *testing.T) {
 				Phase: v1.IntegrationPhaseInitialization,
 			},
 			Spec: v1.IntegrationSpec{
-				Profile: v1.TraitProfileKubernetes,
 				Traits: v1.Traits{
 					Container: &traitv1.ContainerTrait{
 						Image: "foo/bar:1.0.0",
@@ -295,7 +287,6 @@ func TestContainerWithCustomImageAndIntegrationKit(t *testing.T) {
 				Phase: v1.IntegrationPhaseInitialization,
 			},
 			Spec: v1.IntegrationSpec{
-				Profile: v1.TraitProfileKubernetes,
 				Traits: v1.Traits{
 					Container: &traitv1.ContainerTrait{
 						Image: "foo/bar:1.0.0",
@@ -334,7 +325,6 @@ func TestContainerWithImagePullPolicy(t *testing.T) {
 		IntegrationKit: &v1.IntegrationKit{},
 		Integration: &v1.Integration{
 			Spec: v1.IntegrationSpec{
-				Profile: v1.TraitProfileKubernetes,
 				Traits: v1.Traits{
 					Container: &traitv1.ContainerTrait{
 						ImagePullPolicy: "Always",
@@ -372,7 +362,6 @@ func TestDeploymentContainerPorts(t *testing.T) {
 		IntegrationKit: &v1.IntegrationKit{},
 		Integration: &v1.Integration{
 			Spec: v1.IntegrationSpec{
-				Profile: v1.TraitProfileKubernetes,
 				Traits: v1.Traits{
 					Container: &traitv1.ContainerTrait{
 						Port:        8081,
@@ -427,6 +416,7 @@ func TestKnativeServiceContainerPorts(t *testing.T) {
 		IntegrationKit: &v1.IntegrationKit{},
 		Integration: &v1.Integration{
 			Spec: v1.IntegrationSpec{
+				//nolint:staticcheck
 				Profile: v1.TraitProfileKnative,
 				Traits: v1.Traits{
 					Container: &traitv1.ContainerTrait{
@@ -530,7 +520,7 @@ func TestUserSecurityContext(t *testing.T) {
 	environment.Integration.Spec.Traits = v1.Traits{
 		Container: &traitv1.ContainerTrait{
 			RunAsNonRoot:             ptr.To(false),
-			RunAsUser:                ptr.To(int64(1000)),
+			RunAsUser:                ptr.To(int64(1001)),
 			SeccompProfileType:       "Unconfined",
 			AllowPrivilegeEscalation: ptr.To(true),
 			CapabilitiesDrop:         []corev1.Capability{"DROP"},
@@ -553,7 +543,7 @@ func TestUserSecurityContext(t *testing.T) {
 	assert.NotNil(t, d)
 	assert.Len(t, d.Spec.Template.Spec.Containers, 1)
 	assert.Equal(t, ptr.To(false), d.Spec.Template.Spec.Containers[0].SecurityContext.RunAsNonRoot)
-	assert.Equal(t, ptr.To(int64(1000)), d.Spec.Template.Spec.Containers[0].SecurityContext.RunAsUser)
+	assert.Equal(t, ptr.To(int64(1001)), d.Spec.Template.Spec.Containers[0].SecurityContext.RunAsUser)
 	assert.Equal(t, corev1.SeccompProfileTypeUnconfined, d.Spec.Template.Spec.Containers[0].SecurityContext.SeccompProfile.Type)
 	assert.Equal(t, ptr.To(true), d.Spec.Template.Spec.Containers[0].SecurityContext.AllowPrivilegeEscalation)
 	assert.Equal(t, []corev1.Capability{"DROP"}, d.Spec.Template.Spec.Containers[0].SecurityContext.Capabilities.Drop)
@@ -665,6 +655,7 @@ func createSettingContextEnvironment(t *testing.T, profile v1.TraitProfile) *Env
 				Phase: v1.IntegrationPhaseDeploying,
 			},
 			Spec: v1.IntegrationSpec{
+				//nolint:staticcheck
 				Profile: profile,
 			},
 		},

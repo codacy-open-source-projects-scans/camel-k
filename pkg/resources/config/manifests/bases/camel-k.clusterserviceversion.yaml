@@ -22,8 +22,8 @@ metadata:
     capabilities: Full Lifecycle
     categories: Integration & Delivery
     certified: "false"
-    containerImage: docker.io/apache/camel-k:2.11.0-SNAPSHOT
-    createdAt: 2026-04-20T10:13:31Z
+    containerImage: docker.io/apache/camel-k:2.12.0-SNAPSHOT
+    createdAt: 2026-09-07T13:27:16Z
     description: Apache Camel K is a lightweight integration platform, born on Kubernetes,
       with serverless superpowers.
     operators.operatorframework.io/builder: operator-sdk-v1.16.0
@@ -31,7 +31,7 @@ metadata:
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v2
     repository: https://github.com/apache/camel-k
     support: Camel
-  name: camel-k.v2.11.0
+  name: camel-k.v2.12.0
 spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
@@ -86,22 +86,8 @@ spec:
 
     ## Installation
 
-    You may need to specify the container registry where to store the container images created for the Camel applications.
-    To start using Camel K, install the operator and then create the following `IntegrationPlatform`:
-    ```
-    apiVersion: camel.apache.org/v1
-    kind: IntegrationPlatform
-    metadata:
-      name: camel-k
-      labels:
-        app: "camel-k"
-    spec:
-      build:
-        registry:
-          address: docker.io/my-org
-    ```
-
-    An `IntegrationPlatform` resource is automatically created by default on OpenShift, so you can skip this step when using Openshift cluster.
+    Proceed to the Camel K operator installation via `Subscription` or via GUI.
+    See official Apache Camel K documentation to learn how to configure all the available parameters.
 
     ## Running an Integration
 
@@ -110,8 +96,6 @@ spec:
     apiVersion: camel.apache.org/v1
     kind: Integration
     metadata:
-      annotations:
-        camel.apache.org/operator.id: camel-k
       name: test
     spec:
       flows:
@@ -142,7 +126,7 @@ spec:
     type: OwnNamespace
   - supported: true
     type: SingleNamespace
-  - supported: false
+  - supported: true
     type: MultiNamespace
   - supported: true
     type: AllNamespaces
@@ -164,8 +148,8 @@ spec:
   minKubeVersion: 1.24.0
   provider:
     name: The Apache Software Foundation
-  replaces: camel-k-operator.v2.10.0
+  replaces: camel-k-operator.v2.11.0
   selector:
     matchLabels:
       name: camel-k-operator
-  version: 2.11.0
+  version: 2.12.0

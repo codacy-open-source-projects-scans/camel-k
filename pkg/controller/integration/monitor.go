@@ -35,16 +35,14 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
-	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
-
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
+	servingv1 "github.com/apache/camel-k/v2/pkg/apis/duck/knative/serving/v1"
 	"github.com/apache/camel-k/v2/pkg/client"
 	"github.com/apache/camel-k/v2/pkg/trait"
 	"github.com/apache/camel-k/v2/pkg/util"
 	"github.com/apache/camel-k/v2/pkg/util/digest"
 	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
 	utilResource "github.com/apache/camel-k/v2/pkg/util/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // NewMonitorAction is an action used to monitor manager Integrations.
@@ -310,15 +308,6 @@ func isIntegrationKitResetRequired(integration *v1.Integration, kit *v1.Integrat
 		return true
 	}
 
-	//nolint:staticcheck
-	if v1.GetIntegrationProfileNamespaceAnnotation(integration) != "" &&
-		//nolint:staticcheck
-		v1.GetIntegrationProfileNamespaceAnnotation(integration) != v1.GetIntegrationProfileNamespaceAnnotation(kit) {
-		// Integration profile namespace for the integration has changed. Reset integration kit
-		// so new profile can be applied
-		return true
-	}
-
 	return false
 }
 
@@ -334,26 +323,18 @@ func getIntegrationSecretAndConfigmapResourceVersions(ctx context.Context, clien
 			if conf, parseErr := utilResource.ParseConfig(c); parseErr == nil {
 				if conf.StorageType() == utilResource.StorageTypeConfigmap {
 					cm := corev1.ConfigMap{
-						TypeMeta: metav1.TypeMeta{
-							Kind:       "ConfigMap",
-							APIVersion: corev1.SchemeGroupVersion.String(),
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Namespace: integration.Namespace,
-							Name:      conf.Name(),
-						},
+						Kind:       corev1.ResourceConfigMaps.String(),
+						APIVersion: corev1.SchemeGroupVersion.String(),
+						Namespace:  integration.Namespace,
+						Name:       conf.Name(),
 					}
 					configmaps = append(configmaps, kubernetes.LookupResourceVersion(ctx, client, &cm))
 				} else if conf.StorageType() == utilResource.StorageTypeSecret {
 					sec := corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							Kind:       "Secret",
-							APIVersion: corev1.SchemeGroupVersion.String(),
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Namespace: integration.Namespace,
-							Name:      conf.Name(),
-						},
+						Kind:       corev1.ResourceSecrets.String(),
+						APIVersion: corev1.SchemeGroupVersion.String(),
+						Namespace:  integration.Namespace,
+						Name:       conf.Name(),
 					}
 					secrets = append(secrets, kubernetes.LookupResourceVersion(ctx, client, &sec))
 				}
@@ -514,12 +495,14 @@ func arePodsFailingStatuses(integration *v1.Integration, pendingPods []corev1.Po
 
 // probeReadiness calls the readiness probes of the non-ready Pods directly to retrieve insights from the Camel runtime.
 // The func return the number of readyPods, the success of the probe and any error may have happened during its execution.
+//
+//nolint:staticcheck
 func (action *monitorAction) probeReadiness(ctx context.Context, environment *trait.Environment, integration *v1.Integration, pods []corev1.Pod) (int32, bool, error) {
 	// as a default we assume the Integration is Ready
 	readyCondition := v1.IntegrationCondition{
-		Type:   v1.IntegrationConditionReady,
-		Status: corev1.ConditionTrue,
-		Pods:   make([]v1.PodCondition, len(pods)),
+		Type:           v1.IntegrationConditionReady,
+		Status:         corev1.ConditionTrue,
+		DeprecatedPods: make([]v1.PodCondition, len(pods)),
 	}
 
 	readyPods := int32(0)
@@ -531,10 +514,10 @@ func (action *monitorAction) probeReadiness(ctx context.Context, environment *tr
 
 	for i := range pods {
 		pod := &pods[i]
-		readyCondition.Pods[i].Name = pod.Name
+		readyCondition.DeprecatedPods[i].Name = pod.Name
 		for p := range pod.Status.Conditions {
 			if pod.Status.Conditions[p].Type == corev1.PodReady {
-				readyCondition.Pods[i].Condition = pod.Status.Conditions[p]
+				readyCondition.DeprecatedPods[i].Condition = pod.Status.Conditions[p]
 
 				break
 			}
@@ -599,13 +582,13 @@ func (action *monitorAction) probeReadiness(ctx context.Context, environment *tr
 			}
 
 			if errors.Is(err, context.DeadlineExceeded) {
-				readyCondition.Pods[i].Condition.Message = fmt.Sprintf("readiness probe timed out for Pod %s/%s", pod.Namespace, pod.Name)
+				readyCondition.DeprecatedPods[i].Condition.Message = fmt.Sprintf("readiness probe timed out for Pod %s/%s", pod.Namespace, pod.Name)
 				runtimeReady = false
 
 				continue
 			}
 			if !k8serrors.IsServiceUnavailable(err) {
-				readyCondition.Pods[i].Condition.Message = fmt.Sprintf("readiness probe failed for Pod %s/%s: %s", pod.Namespace, pod.Name, err.Error())
+				readyCondition.DeprecatedPods[i].Condition.Message = fmt.Sprintf("readiness probe failed for Pod %s/%s: %s", pod.Namespace, pod.Name, err.Error())
 				runtimeReady = false
 
 				continue
@@ -623,7 +606,7 @@ func (action *monitorAction) probeReadiness(ctx context.Context, environment *tr
 				runtimeReady = false
 				runtimeFailed = true
 
-				readyCondition.Pods[i].Health = append(readyCondition.Pods[i].Health, check)
+				readyCondition.DeprecatedPods[i].Health = append(readyCondition.DeprecatedPods[i].Health, check)
 			}
 		}
 	}

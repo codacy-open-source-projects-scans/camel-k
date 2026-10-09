@@ -27,24 +27,18 @@ import (
 // NewIntegrationPlatformList --.
 func NewIntegrationPlatformList() IntegrationPlatformList {
 	return IntegrationPlatformList{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: SchemeGroupVersion.String(),
-			Kind:       IntegrationPlatformKind,
-		},
+		APIVersion: SchemeGroupVersion.String(),
+		Kind:       IntegrationPlatformKind,
 	}
 }
 
 // NewIntegrationPlatform --.
 func NewIntegrationPlatform(namespace string, name string) IntegrationPlatform {
 	return IntegrationPlatform{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: SchemeGroupVersion.String(),
-			Kind:       IntegrationPlatformKind,
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
+		APIVersion: SchemeGroupVersion.String(),
+		Kind:       IntegrationPlatformKind,
+		Namespace:  namespace,
+		Name:       name,
 	}
 }
 
@@ -55,6 +49,11 @@ func (in *IntegrationPlatformSpec) Configurations() []ConfigurationSpec {
 	}
 
 	return in.Configuration
+}
+
+// GetOperatorID returns the operator id as an annotation.
+func (in *IntegrationPlatform) GetOperatorID() string {
+	return GetAnnotation(OperatorIDAnnotation, in)
 }
 
 // SetOperatorID sets the given operator id as an annotation.
