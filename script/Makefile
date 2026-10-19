@@ -61,7 +61,7 @@ BASE_IMAGE_NAME := eclipse-temurin
 BASE_IMAGE_VERSION := 17-jdk
 OFFICIAL_IMAGE_VERSION := 17-jdk
 BASE_IMAGE_SHA_VERSION := 17-jdk
-BASE_IMAGE_SHA := sha256:5d6042fb8cdc14d614e4e421f52e3211fc5aeadddce44cbf9de8ed37c791f824
+BASE_IMAGE_SHA := sha256:fe947d993c32dd9cf651a4353a6ed723c2370b3a9d034ea4cab4775404ea531a
 BASE_IMAGE := $(BASE_IMAGE_NAME):$(BASE_IMAGE_VERSION)$(if $(filter $(BASE_IMAGE_VERSION),$(BASE_IMAGE_SHA_VERSION)),@$(BASE_IMAGE_SHA),)
 LOCAL_REPOSITORY := /etc/maven/m2
 OPENSHIFT_REGISTRY := image-registry.openshift-image-registry.svc:5000
@@ -276,6 +276,14 @@ test-common: gotestfmt-install
 	FAILED=0; \
 	go test -p $(TEST_COMMON_PARALLEL_COUNT) -timeout 90m -v ./e2e/common/... --parallel 1 -tags=integration $(GOTESTFMT) || ((FAILED++)); \
 	exit $${FAILED}
+
+#
+# NetworkPolicy test that requires a Calico-backed Minikube cluster
+#
+test-network-policy: gotestfmt-install
+	FAILED=0; \
+	go test -p $(TEST_COMMON_PARALLEL_COUNT) -timeout 20m -v ./e2e/networkpolicy/... --parallel 1 -tags=integration $(GOTESTFMT) || ((FAILED++)); \
+	if ((FAILED)); then exit 1; fi
 
 #
 # Smoke tests are a subset of common tests used to quickly verify the operator
@@ -777,7 +785,7 @@ goimport:
 #####
 
 KUSTOMIZE_DIR = "install/overlays/all-namespaces"
-DEFAULT_NS = "camel-k"
+DEFAULT_NS = "camel"
 
 .PHONY: install install-k8s-global install-k8s-ns install-openshift-global install-openshift-ns
 
@@ -821,7 +829,7 @@ endif
 	cd $(KUST_TMP)/install/overlays/platform && kustomize edit set namespace $(NAMESPACE)
 	kubectl apply -k $(KUST_TMP)/$(KUSTOMIZE_DIR) --server-side --force-conflicts
 
-install-k8s-global: DEFAULT_NS="camel-k"
+install-k8s-global: DEFAULT_NS="camel"
 install-k8s-global: KUSTOMIZE_DIR="install/overlays/all-namespaces"
 install-k8s-global: clone-kustomize-dir set-operator-id set-operator-env install-operator
 
